@@ -1,0 +1,14 @@
+{
+  "name": "game",
+  "scripts": {
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "vite": "^5.3.3"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d": "^0.13.1",
+    "@dimforge/rapier3d-compat": "^0.13.1",
+    "three": "^0.166.1"
+  }
+}
