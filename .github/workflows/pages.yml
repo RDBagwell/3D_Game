@@ -1,0 +1,77 @@
+# Tests, builds and deploys the game to GitHub Pages.
+#
+#   every push and pull request: type check + unit tests (Ubuntu and Windows,
+#   because Robert develops on Windows), then a build and the Playwright smoke
+#   tests in headless Chromium.
+#   pushes to main: the build is published to GitHub Pages.
+#
+# One-time setup (see the README): Settings > Pages > Source: "GitHub Actions".
+# The site is https://rdbagwell.github.io/3D_Game/ (the repository name is
+# case-sensitive in that URL; the build uses relative paths, so a rename only
+# changes the URL, see site.config.js).
+name: Test, build and deploy
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Smoke tests (Playwright, headless Chromium)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test --grep-invert @screenshots
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: test-results/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

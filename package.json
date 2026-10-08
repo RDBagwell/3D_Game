@@ -1,14 +1,33 @@
 {
-  "name": "game",
+  "name": "3d-game",
+  "private": true,
+  "version": "0.2.0",
+  "description": "A small 3D action-adventure in the browser, with a built-in game-feel lab.",
+  "type": "module",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p jsconfig.json",
+    "test": "npm run typecheck && vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "screenshots": "playwright test --grep @screenshots",
+    "assets": "node tools/import-assets.mjs"
   },
-  "devDependencies": {
-    "vite": "^5.3.3"
+  "engines": {
+    "node": ">=20.19"
   },
   "dependencies": {
-    "@dimforge/rapier3d": "^0.13.1",
-    "@dimforge/rapier3d-compat": "^0.13.1",
-    "three": "^0.166.1"
+    "@dimforge/rapier3d-compat": "0.20.0",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "4.5.0",
+    "@playwright/test": "1.56.1",
+    "@types/three": "0.186.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.3"
   }
 }
