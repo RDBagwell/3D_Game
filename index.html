@@ -1,11 +1,24 @@
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-    <canvas id="canvas1"></canvas>
-    <script type="module" src="./app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="description" content="A small 3D action-adventure combat sandbox with a built-in game-feel lab." />
+    <meta name="theme-color" content="#2b1d4a" />
+    <title>Island Blade: combat sandbox and game-feel lab</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  </head>
+  <body>
+    <main id="game">
+      <canvas aria-label="The game"></canvas>
+      <div class="overlay"></div>
+      <div class="loading" role="status">
+        <h1 class="logo">Island <span>Blade</span></h1>
+        <div class="loading-bar"><span></span></div>
+        <p class="loading-label">Loading…</p>
+      </div>
+    </main>
+    <noscript>This game needs JavaScript and WebGL.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
