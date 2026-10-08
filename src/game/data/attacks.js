@@ -17,7 +17,9 @@
  *   knockback    m/s pushed away from the attacker (scaled by the lab's slider)
  *   hitstun      frames the target can't act after being hit
  *   hitstop      frames the whole fight freezes on impact (scaled by the lab)
- *   knockdown    true: the target falls over instead of flinching
+ *   knockdown    true: the target falls over instead of flinching. The hero is
+ *                also knocked down by any hit that lands mid-swing (a
+ *                "counter hit", Sandbox.applyHit)
  *   shake        camera trauma, 0..1
  *   lunge        m/s the attacker steps forward during startup and active frames
  *   hitbox       a sphere that sweeps through an arc during the active frames:

@@ -271,7 +271,9 @@ motion and sound as well as colour, so they work for colour-blind players
 and players who can't hear. The grunt keeps turning towards you during the
 wind-up, slowly, and stops 9 frames before the hit, so a late roll or a step
 to the side works. Only one grunt attacks at a time (the attack token), and
-after attacking it recovers for 32 frames: your opening.
+after attacking it recovers for 32 frames: your opening. The flip side: a
+blow that lands while you're mid-swing is a **counter hit** and knocks you
+down, so attacking into a wind-up you've seen is a choice with a cost.
 
 Switch telegraphs off and the wind-up is still there, but only in the
 animation: the same fight suddenly feels unfair.

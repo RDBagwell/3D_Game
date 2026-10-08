@@ -324,9 +324,11 @@ export class Sandbox {
 
     if (result.result === 'hit') {
       const wasAlive = target.alive;
-      target.takeHit({ damage: attack.damage, poise: attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown });
+      // A counter hit: caught in the middle of your own swing, you're knocked down.
+      const counter = target instanceof Player && target.fsm.is('attack');
+      target.takeHit({ damage: attack.damage, poise: attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
       this.hitstop = Math.max(this.hitstop, Math.round(attack.hitstop * Number(this.feel.hitstopScale)));
-      this.emit('hit', { ...base, damage: attack.damage, killed: wasAlive && !target.alive });
+      this.emit('hit', { ...base, damage: attack.damage, killed: wasAlive && !target.alive, counter });
       if (wasAlive && !target.alive && target instanceof Grunt) {
         target.body.setSolid?.(false);
         if (this.lockTarget === target) this.setLock(null);

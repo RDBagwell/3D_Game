@@ -140,4 +140,19 @@ describe('combat in the sandbox', () => {
     expect(sb.player.swingId).toBe(2); // the buffered press chained into slash2
     sb.dispose();
   });
+
+  it('a hit that lands mid-swing is a counter hit: the hero is knocked down', async () => {
+    const sb = await Sandbox.create({ grunts: true });
+    const grunt = sb.grunts[0];
+    const player = sb.player;
+    sb.step(press('attack'));
+    sb.step(idle);
+    expect(player.state).toBe('attack');
+    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'hit', point: { ...player.position } });
+    expect(player.state).toBe('knockdown');
+    player.fsm.force('idle');
+    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'hit', point: { ...player.position } });
+    expect(player.state).toBe('hitstun');
+    sb.dispose();
+  });
 });

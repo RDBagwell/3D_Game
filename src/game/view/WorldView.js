@@ -152,6 +152,7 @@ export class WorldView {
       }
       if (this.show().damage && d.target.kind === 'dummy') this.floaters.add(String(d.damage), d.point, d.attack.hitstop >= 6 ? 'big' : '');
       else if (d.target.team === 'player' && this.show().damage) this.floaters.add(`-${d.damage}`, d.point, 'hurt');
+      if (d.counter) this.floaters.add('Counter hit', { ...d.point, y: d.point.y + 0.5 }, 'note');
     });
     ev.on('block', (d) => {
       if (f().hitSounds) play('block', d.point);
