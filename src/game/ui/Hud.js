@@ -120,7 +120,11 @@ export class Hud {
 
   /** @param {string} text */
   caption(text) {
+    // Several grunts noticing you at once is one caption, not three.
+    const last = /** @type {HTMLElement | null} */ (this.captions.lastElementChild);
+    if (last?.textContent === text && performance.now() - Number(last.dataset.at) < 1500) return;
     const line = document.createElement('div');
+    line.dataset.at = String(performance.now());
     line.className = 'caption';
     line.textContent = text;
     this.captions.append(line);

@@ -42,6 +42,8 @@ export class Game {
     this.canvas = /** @type {HTMLCanvasElement} */ (root.querySelector('canvas'));
     this.overlay = /** @type {HTMLElement} */ (root.querySelector('.overlay'));
     this.input = new Input({ bindings: bindingsFor(settings.values.keys), pointerElement: this.canvas });
+    // On a phone, show touch hints from the start (until a keyboard or pad is used).
+    if (isTouchDevice()) this.input.lastDevice = 'touch';
     this.audio = new AudioManager();
     this.audio.register(SOUNDS);
     this.audio.autoUnlock(window);

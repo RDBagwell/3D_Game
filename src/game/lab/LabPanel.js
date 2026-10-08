@@ -47,10 +47,10 @@ export class LabPanel {
         <div class="speed">Simulation speed <span class="speed-buttons"></span></div>
         <div class="share"><button class="share-btn">Copy share link</button><span class="share-status" aria-live="polite"></span></div>
       </section>
-      <section class="lab-show"><h3>Show the invisible</h3><div class="show-list"></div></section>
       <section class="lab-states" hidden><h3>Hero state machine</h3><div class="state-now"></div><div class="state-grid"></div><ol class="state-history"></ol></section>
       <section class="lab-buffer" hidden><h3>Input buffer (last 2 s)</h3><canvas width="320" height="84"></canvas>
         <p class="legend"><b class="dot pressed"></b> pressed <b class="dot used"></b> used <b class="dot lost"></b> lost (too early, or not allowed) <b class="bar"></b> hit-stop</p></section>
+      <section class="lab-show"><h3>Show the invisible</h3><div class="show-list"></div></section>
       <div class="lab-groups"></div>`;
     container.append(this.root);
 
