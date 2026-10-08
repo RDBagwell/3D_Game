@@ -1,0 +1,11 @@
+# Keep text files with LF line endings on every OS (Windows checkouts
+# included), so tools, tests and diffs behave the same everywhere.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.glb binary
+*.blend binary
+*.blend1 binary
+*.webp binary
+*.ogg binary

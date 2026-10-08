@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.vite/
+coverage/
+test-results/
+playwright-report/
+# Downloaded asset packs: `npm run assets` turns them into public/ files.
+art/incoming/
