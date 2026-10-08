@@ -12,6 +12,58 @@ Each file is marked:
 - **unknown**: nobody has confirmed where it came from. It doesn't ship; it
   stays out of `public/` until Robert confirms its source.
 
+## What the game ships (`public/`)
+
+Only these files are deployed. `tests/assetManifest.test.js` checks that
+every file the game loads (`src/game/data/assets.js`) exists and is listed
+here.
+
+### KayKit packs by Kay Lousberg (`public/models/`)
+
+Downloaded from the packs' GitHub repositories on 2026-10-08 and optimised
+by `npm run assets` (meshopt compression, textures resized to 256 px WebP;
+see `tools/asset-sources.mjs`).
+
+**Licence** (from each pack's `LICENSE.txt`, recorded 2026-10-08):
+
+> License: (Creative Commons Zero, CC0)
+> http://creativecommons.org/publicdomain/zero/1.0/
+>
+> This content is free to use in personal, educational and commercial
+> projects.
+>
+> Support me by using a brand resource provided in this pack or by crediting
+> Kay Lousberg, www.kaylousberg.com (this is not mandatory)
+
+Credit isn't required but is given, here, in the README and on the title
+screen. CC0 files may sit in a public repository.
+
+| File | Was | What | Source | Licence | Status |
+| --- | --- | --- | --- | --- | --- |
+| `public/models/knight.glb` | `Characters/gltf/Knight.glb` | The hero: rigged knight with 76 animations and every accessory (the game shows the one-handed sword and the round shield) | [KayKit Character Pack: Adventurers 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 1.0 | keep |
+| `public/models/skeleton_warrior.glb` | `Characters/gltf/Skeleton_Warrior.glb` | The grunt enemy: rigged skeleton with 95 animations | [KayKit Character Pack: Skeletons 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0) | CC0 1.0 | keep |
+| `public/models/skeleton_blade.glb` | `Assets/gltf/Skeleton_Blade.gltf` | The grunt's sword (attached to its right hand in code) | KayKit Skeletons 1.0 | CC0 1.0 | keep |
+| `public/models/skeleton_shield.glb` | `Assets/gltf/Skeleton_Shield_Small_A.gltf` | The grunt's shield | KayKit Skeletons 1.0 | CC0 1.0 | keep |
+| `public/models/dummy.glb` | `Assets/gltf/Dummy_Base.gltf` | Training dummy (base, body, arms, head, target) | [KayKit Prototype Bits 1.0](https://github.com/KayKit-Game-Assets/KayKit-Prototype-Bits-1.0) | CC0 1.0 | keep |
+| `public/models/barrel.glb` | `Assets/gltf/Barrel_A.gltf` | Blue barrel (scenery) | KayKit Prototype Bits 1.0 | CC0 1.0 | keep |
+| `public/models/crate.glb` | `Assets/gltf/Box_A.gltf` | Cardboard box (scenery) | KayKit Prototype Bits 1.0 | CC0 1.0 | keep |
+| `public/models/target_stand.glb` | `Assets/gltf/target_stand_A.gltf` | Archery target on a stand (scenery) | KayKit Prototype Bits 1.0 | CC0 1.0 | keep |
+
+If a model is missing (say, a fresh clone before `npm run assets`, or a
+failed download), the game draws a placeholder shape instead, so it always
+runs.
+
+### Project-made assets
+
+| File | What | Source | Licence | Status |
+| --- | --- | --- | --- | --- |
+| `public/favicon.svg` | Sword over an orange disc | Drawn for this project | Project's own | keep |
+| Sound effects | Sword swings, hits, blocks, roll, footsteps per surface (grass, dirt, stone, wood), lock-on, enemy wind-up, UI | Synthesised at runtime with Web Audio (`src/game/data/sounds.js`) | Project's own | keep |
+| Training grounds | Ground, ramp, steps, walls, platforms | Built from boxes in code (`src/game/scenes/trainingGrounds.js`) | Project's own | keep |
+| Sky, particles, HUD, lock-on reticle, touch controls | Gradient sky, hit sparks and dust, health bar, reticle, on-screen buttons | Drawn in code (shaders, canvas, CSS) | Project's own | keep |
+| UI font | The system font (`system-ui`) | The player's operating system | Not shipped | keep |
+| `public/music/*.ogg` | Not there yet: Robert's original music goes here (see [docs/ASSETS-TODO.md](docs/ASSETS-TODO.md)) | Robert Bagwell | Project's own | to do |
+
 ## Robert's own work (`art/blender/`)
 
 The 2024 prototype's Blender scenes and their glTF exports. They were in
