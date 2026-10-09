@@ -104,6 +104,31 @@ test.describe('smoke', () => {
     expect(errors).toEqual([]);
   });
 
+  test('travelling between areas does not leak GPU memory', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    const counts = await page.evaluate(async () => {
+      const g = /** @type {Game} */ (window).game;
+      g.adventure.state.flags.add('gate_open');
+      const out = [];
+      for (let i = 0; i < 4; i++) {
+        await g.travel('halls', 'start');
+        await g.travel('village', 'gate');
+        await new Promise((r) => setTimeout(r, 500));
+        out.push(g.view.renderer.info.memory.textures);
+      }
+      return out;
+    });
+    // No growth from trip to trip. (The leak this guards against added about
+    // 150 textures per round trip; a few vary with when neighbouring areas
+    // are precompiled in idle time.)
+    expect(Math.max(...counts.slice(1)) - Math.min(...counts.slice(1)), JSON.stringify(counts)).toBeLessThan(30);
+    expect(counts[3] - counts[1], JSON.stringify(counts)).toBeLessThan(30);
+    expect(errors).toEqual([]);
+  });
+
   test('the lab opens, and a toggle takes effect in the fight', async ({ page }) => {
     const errors = collectErrors(page);
     await openGame(page);

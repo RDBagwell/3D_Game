@@ -30,62 +30,91 @@ node tools/measure.mjs
 ```
 
 It serves the build with `vite preview`, loads it in headless Chromium,
-records every file requested before the title screen, samples
-`renderer.info` in three views, and times 600 simulation steps.
+records every file requested before the title screen, starts a new game,
+samples `renderer.info` in six views (the village at each quality preset,
+a fight in the Hearth Halls, the Warden's chamber, the lab), and times 600
+simulation steps in the Switch Hall with its enemies coming for you.
 
-> Measured 2026-10-08: headless Chromium 141.0.7390.37, **SwiftShader
+> Measured 2026-10-09: headless Chromium 141.0.7390.37, **SwiftShader
 > (software WebGL)**, Intel Xeon @ 2.80 GHz × 4 (cloud container), Node 22.22.0.
 
 ### Download
 
+Everything is loaded before the title screen (so moving between areas never
+waits on the network).
+
 | File | Raw | Gzipped |
 | --- | --- | --- |
-| `assets/index-*.js` (game, Three.js, Rapier with its WebAssembly inlined) | 3.63 MB | 1.28 MB |
-| `models/skeleton_warrior.glb` | 2.62 MB | 0.54 MB |
-| `models/knight.glb` | 2.02 MB | 0.40 MB |
-| Six small models, CSS, HTML | 0.10 MB | 0.07 MB |
-| **Total** | **8.37 MB** | **2.28 MB** |
+| `assets/index-*.js` (game, Three.js, Rapier with its WebAssembly inlined) | 3.77 MB | 1.32 MB |
+| The knight and three skeletons (warrior, minion, mage), 0.61–0.68 MB each | 2.60 MB | 0.71 MB |
+| Four villagers, 0.21–0.22 MB each | 0.85 MB | 0.37 MB |
+| 46 small models (village and dungeon scenery, weapons, the dummy and props), CSS, HTML | 0.74 MB | 0.49 MB |
+| **Total** | **7.96 MB** | **2.89 MB** |
 
-Within budget either way: 2.3 MB if the host gzips everything, about 6 MB if
-it only gzips JavaScript and CSS (GitHub Pages compresses text types; not
-verified here whether it compresses `.glb`). The two characters are mostly
-animation: they carry all 76 and 95 of their clips; stripping the unused ones
-would roughly halve them (see docs/ASSETS-TODO.md).
+Within the 15 MB budget either way. Session 1 shipped 8.37 MB for one level
+and two characters; the whole adventure is now smaller, because the
+importer strips unused animation clips (the knight went from 2.02 MB to
+0.61 MB; docs/ASSETS-TODO.md).
 
-Time to the title screen from the local preview server: 0.7 s (no network,
+Time to the title screen from the local preview server: 1.1 s (no network,
 so this says nothing about real loading times).
 
 ### Rendering
 
-| View | Draw calls | Triangles | fps (software-rendered) | Frame ms (software-rendered) |
-| --- | --- | --- | --- | --- |
-| Training grounds, facing the dummy | 158 | 55,154 | 4 | 283 |
-| Arena, three grunts fighting | 130 | 52,390 | 4 | 250 |
-| Lab open, every debug view on | 127 | 52,468 | 4 | 267 |
+Draw calls and triangles include the shadow pass where there is one. The
+fps and frame-time columns are SwiftShader numbers and are only there to be
+honest about what the run showed: **they mean nothing for a real GPU**.
 
-Draw calls and triangles are within budget; they include the shadow pass.
-The fps and frame-time columns are SwiftShader numbers and are only there
-to be honest about what the run showed: they mean nothing for a real GPU.
+| View | Draw calls | Triangles | fps (software) | Frame ms (software) |
+| --- | --- | --- | --- | --- |
+| Village square, High | 149 | 104,491 | 2 | 433 |
+| Village square, Medium | 149 | 104,491 | 3 | 350 |
+| Village square, Low (no shadows) | 81 | 50,379 | 3 | 367 |
+| Hearth Halls, a fight in the Switch Hall, High | 140 | 128,523 | 3 | 333 |
+| The Warden's chamber, High | 119 | 105,260 | 4 | 233 |
+| Training grounds, lab open with every debug view, High | 150 | 55,166 | 0 | 2,233 |
+
+All within budget (≤ 250 draw calls, ≤ 150,000 triangles). Medium differs
+from High in shadow-map size and resolution, not in what's drawn, so its
+counts match.
+
+Two problems this measurement found and fixed before these numbers:
+
+- **The Hearth Halls drew 176,433 triangles**, over budget: every kind of
+  dungeon piece was one instanced mesh spanning the whole dungeon, so none
+  of it was ever culled, and rooms past the fog were still drawn. Pieces are
+  now instanced per room, and indoors the camera stops drawing at 38 m, just
+  past the fog, where nothing can be seen anyway.
+- **GPU memory grew with every area change**: each cloned character's
+  skeleton keeps a bone texture on the GPU, and leaving an area never freed
+  them (about ten per character; 126 textures per visit to the halls). Areas
+  now free their skeletons, shadow maps and own geometry when you leave, and
+  a smoke test (`tests/e2e/smoke.spec.js`) checks that round trips between
+  the village and the halls leave texture counts unchanged.
 
 ### Simulation (CPU)
 
-600 steps of the full `Sandbox.step` (input buffer, three grunts' AI,
-four character controllers, Rapier, combat, camera), timed inside the page:
-**mean 0.36 ms, 95th percentile 0.90 ms per step; Rapier's `world.step`
-0.05 ms** of that. Within budget on this CPU. A phone CPU will be slower; as an
+600 steps of the full `Sandbox.step` in the Switch Hall (input buffer, the
+AI of the room's cindermites and adept, the character controllers, Rapier,
+projectiles, combat, camera), timed inside the page: **mean 0.28 ms, 95th
+percentile 0.70 ms per step; Rapier's `world.step` 0.04 ms** of that.
+Within the 2 ms budget on this CPU. A phone CPU will be slower; as an
 unmeasured rule of thumb, even five times slower would still fit.
 
-### Where the cost is, and what's already done
+### Where the cost is, and the levers
 
-- **Shadows** double the draw calls: one directional light, a 2048² shadow
-  map on desktop and 1024² on touch devices, with a 32 m box that follows
-  the player.
-- **Pixel ratio** is capped at 2 on desktop and 1.5 on touch devices, and
-  anti-aliasing is off on touch devices.
-- **Debug lines** (the lab's views) are one draw call however much is shown.
-- **Particles** are one draw call (a single point cloud).
-- **Characters** are about ten meshes each (body parts and accessories);
-  merging them would cut draw calls further if a phone needs it.
+- **Quality presets** (Settings → Graphics, `src/game/data/quality.js`):
+  Low has no shadows, a pixel ratio of 1, a 95 m view and 40% of the
+  particles; phones and tablets start on Low, small computers on Medium.
+- **Shadows** double the draw calls outdoors (one directional light, its
+  shadow box following the player). The halls have no shadow-casting light.
+- **Torch lights** in the halls are capped per preset (3, 5 or 8 lit).
+- **Scenery is instanced**: one draw call per model per room, however many
+  wall pieces.
+- **Characters** are the biggest triangle cost (about 5,000 to 6,700 each)
+  and about ten meshes each; merging their parts would cut draw calls
+  further if a phone needs it.
+- **Particles** and **debug lines** are one draw call each.
 
 ## Measuring on real devices (for Robert)
 
@@ -106,19 +135,19 @@ and the physics step time.
 4. **Desktop:** Chrome DevTools → Performance, with CPU throttling at 4×
    for a rough mobile approximation.
 
-Fill in this table for each device (three views, about 20 seconds each,
+Fill in this table for each device (three places, about 20 seconds each,
 note the HUD's fps and worst frame):
 
-| Device | Browser | Training grounds fps / worst ms | Arena fight fps / worst ms | Lab open, all views fps / worst ms | Load time on 4G / Wi-Fi | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| | | | | | | |
+| Device | Browser | Quality | Village square fps / worst ms | Switch Hall fight fps / worst ms | Warden fight fps / worst ms | Load time on 4G / Wi-Fi | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | |
 
 What to look for: worst frames over 33 ms during hits (shader compilation
 on first use shows up as a one-off spike: note it but don't chase it),
 thermal slow-down after a few minutes on a phone, and whether the touch
 controls stay responsive. If a mid-range phone misses 60 fps, the first
-levers are: shadows off or 512² on touch devices, pixel ratio 1.0, then
-merging character meshes.
+levers are: the Low preset (already the default on touch devices), then
+fewer torch lights, then merging character meshes.
 
 ## Not measured
 

@@ -96,6 +96,7 @@ export class ObjectView {
       case 'switch': {
         const base = new Mesh(new CylinderGeometry(0.45, 0.6, 0.5, 8), new MeshStandardMaterial({ color: 0x5f5a70, roughness: 0.9 }));
         base.position.y = 0.25;
+        base.userData.own = true;
         this.crystal = new Mesh(new OctahedronGeometry(0.42), new MeshStandardMaterial({ color: 0x8fd8ff, emissive: new Color(0x2a8cff), emissiveIntensity: 1.2, roughness: 0.25 }));
         this.crystal.position.y = 1.15;
         this.crystal.castShadow = true;
@@ -114,6 +115,7 @@ export class ObjectView {
       case 'hearthstone': {
         const stone = new Mesh(new CylinderGeometry(0.35, 0.55, 1.3, 6), new MeshStandardMaterial({ color: 0x8c8496, roughness: 0.95 }));
         stone.position.y = 0.65;
+        stone.userData.own = true;
         stone.castShadow = true;
         this.flame = new Mesh(new SphereGeometry(0.18, 12, 8), new MeshStandardMaterial({ color: 0x3b2a22, emissive: new Color(0xff7a2a), emissiveIntensity: 0 }));
         this.flame.position.y = 1.45;
@@ -123,8 +125,10 @@ export class ObjectView {
       case 'hearth': {
         const bowl = new Mesh(new CylinderGeometry(1.4, 1.0, 0.7, 12, 1, true), new MeshStandardMaterial({ color: 0x585266, roughness: 0.9, side: 2 }));
         bowl.position.y = 0.35;
+        bowl.userData.own = true;
         const ash = new Mesh(new CylinderGeometry(1.3, 1.3, 0.1, 12), new MeshStandardMaterial({ color: 0x3a3540, roughness: 1 }));
         ash.position.y = 0.45;
+        ash.userData.own = true;
         this.flame = new Mesh(new SphereGeometry(0.9, 16, 10), new MeshStandardMaterial({ color: 0xffb347, emissive: new Color(0xff6a1a), emissiveIntensity: 2.2, transparent: true, opacity: 0.9 }));
         this.flame.position.y = 1.1;
         this.flame.scale.set(1, 1.4, 1);
@@ -182,6 +186,18 @@ export class ObjectView {
       this.flame.scale.set(flicker, 1.4 * flicker, flicker);
       if (this.light) this.light.intensity = o.open ? 40 * flicker : 0;
     }
+  }
+
+  /** Free the shapes made for this object (its models are shared and stay). */
+  dispose() {
+    for (const part of [this.crystal, this.flame]) {
+      part?.geometry.dispose();
+      /** @type {any} */ (part?.material)?.dispose();
+    }
+    this.root.traverse((o) => {
+      const mesh = /** @type {any} */ (o);
+      if (mesh.isMesh && mesh.userData.own) mesh.geometry.dispose();
+    });
   }
 
   /** Where to show a "struck" spark, for switches. */

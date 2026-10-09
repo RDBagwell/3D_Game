@@ -256,3 +256,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .controls-table.device-gamepad td:nth-child(3), .controls-table.device-gamepad th:nth-child(3),
 .controls-table.device-keyboard td:nth-child(2), .controls-table.device-keyboard th:nth-child(2) { color: var(--orange-2); font-weight: 700; }
 .controls-table.device-touch { opacity: 0.7; }
+
+/* Short screens (a phone held sideways): a compact dialogue box, choices in two columns. */
+@media (max-height: 520px) {
+  .dialogue { width: min(820px, 70vw); min-height: 0; padding: 14px 16px 10px; bottom: 8px; }
+  .dialogue-speaker { font-size: 13px; top: -14px; padding: 2px 10px; }
+  .dialogue-text { font-size: 15px; min-height: 0; }
+  .dialogue-choices { grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
+  .dialogue-choices li { font-size: 14px; padding: 5px 10px; }
+  .menu-screen { padding: 16px; max-height: 96vh; }
+}
+
+/* With touch controls up, the Tonic button is the quick slot; on short screens the boss bar sits clear of the health bar. */
+.overlay:has(.touch-controls:not([hidden])) .quickslot { display: none; }
+@media (max-height: 520px) {
+  .boss { top: 10px; left: 60%; width: 34vw; }
+  .boss-name { font-size: 12px; }
+}

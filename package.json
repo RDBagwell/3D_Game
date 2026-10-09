@@ -1,8 +1,8 @@
 {
   "name": "3d-game",
   "private": true,
-  "version": "0.2.0",
-  "description": "A small 3D action-adventure in the browser, with a built-in game-feel lab.",
+  "version": "0.3.0",
+  "description": "Emberwake: a short 3D action-adventure in the browser, with a built-in game-feel lab.",
   "type": "module",
   "scripts": {
     "dev": "vite",

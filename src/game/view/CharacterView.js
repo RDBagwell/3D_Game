@@ -270,8 +270,16 @@ export class CharacterView {
   }
 }
 
-/** A warning sign: "!" in a triangle (a shape, so it reads without colour). */
+/** @type {CanvasTexture | null} */
+let warning = null;
+
+/** A warning sign: "!" in a triangle (a shape, so it reads without colour). Drawn once, shared. */
 function warningTexture() {
+  warning ??= drawWarning();
+  return warning;
+}
+
+function drawWarning() {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));

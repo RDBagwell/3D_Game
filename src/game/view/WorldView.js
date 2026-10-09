@@ -140,7 +140,7 @@ export class WorldView {
     this.torches = [];
     if (area.look === 'halls') {
       scene.background = new Color(0x15121d);
-      scene.fog = new Fog(0x15121d, 14, 50);
+      scene.fog = new Fog(0x15121d, 11, 36);
       scene.add(new HemisphereLight(0xb8aee0, 0x4a3a2c, 2.2));
       const key = new DirectionalLight(0xffd2a0, 1.2);
       key.position.set(4, 10, 3);
@@ -204,10 +204,14 @@ export class WorldView {
       }
     }
     const fog = /** @type {Fog | null} */ (this.scene.fog);
-    if (fog && this.sandbox.area.look !== 'halls') {
+    const halls = this.sandbox.area.look === 'halls';
+    if (fog && !halls) {
       fog.near = q.fog[0];
       fog.far = q.fog[1];
     }
+    // Indoors nothing past the fog can be seen: don't draw it.
+    this.camera.far = halls ? Math.min(q.far, 38) : q.far;
+    this.camera.updateProjectionMatrix();
     this.torches.forEach((t, i) => (t.visible = i < q.lights));
     if (shadowsChanged) {
       // Materials compile differently with and without shadows.
@@ -219,11 +223,22 @@ export class WorldView {
     }
   }
 
-  /** Let go of the old area's scene (its own meshes; shared models stay loaded). */
+  /**
+   * Let go of the old area's scene: its skeletons (each character clone has
+   * its own bone texture on the GPU) and the geometry built for it. Models'
+   * shared geometry, materials and textures stay loaded for the next area.
+   */
   disposeScene() {
+    for (const view of this.views.values()) {
+      view.ring?.geometry.dispose();
+      /** @type {any} */ (view.ring?.material)?.dispose();
+    }
+    for (const v of this.objectViews) v.dispose();
     this.scene.traverse((o) => {
-      const mesh = /** @type {Mesh} */ (o);
-      if (mesh.isMesh && !(/** @type {any} */ (mesh).isInstancedMesh) && mesh.userData.area) mesh.geometry.dispose();
+      const mesh = /** @type {any} */ (o);
+      if (mesh.isSkinnedMesh) mesh.skeleton?.dispose();
+      if (mesh.isLight && mesh.shadow?.map) mesh.shadow.map.dispose();
+      if (mesh.isMesh && mesh.userData.area) mesh.geometry.dispose();
     });
     this.scene.clear();
     this.floaters.clear();
@@ -494,8 +509,17 @@ export class WorldView {
   }
 }
 
+/** Textures drawn once and shared by every area. @type {Record<string, CanvasTexture>} */
+const TEXTURES = {};
+
 /** A soft round glow, for halos. */
 function glowTexture() {
+  if (TEXTURES.glowTexture) return TEXTURES.glowTexture;
+  TEXTURES.glowTexture = makeGlowTexture();
+  return TEXTURES.glowTexture;
+}
+
+function makeGlowTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
@@ -510,6 +534,12 @@ function glowTexture() {
 
 /** A vertical gradient: deep blue overhead to a warm horizon. */
 function skyTexture() {
+  if (TEXTURES.skyTexture) return TEXTURES.skyTexture;
+  TEXTURES.skyTexture = makeSkyTexture();
+  return TEXTURES.skyTexture;
+}
+
+function makeSkyTexture() {
   const c = document.createElement('canvas');
   c.width = 2;
   c.height = 256;

@@ -100,6 +100,7 @@ export function buildArea(area, models) {
 
   const named = (/** @type {Object3D} */ o, /** @type {string} */ name, /** @type {Vec3} */ at, yaw = 0) => {
     o.name = name;
+    o.userData.area = true; // built for this area: freed when it's left
     o.position.set(...at);
     o.rotation.y = yaw;
     root.add(o);
@@ -121,6 +122,7 @@ export function buildArea(area, models) {
     const geometry = b.shape === 'cylinder' ? new CylinderGeometry(b.size[0] / 2, b.size[0] / 2, b.size[1], 40) : new BoxGeometry(...b.size);
     const mesh = new Mesh(geometry, material(b.material));
     mesh.name = b.name;
+    mesh.userData.area = true;
     mesh.position.set(...b.at);
     mesh.rotation.set(b.rotX ?? 0, b.rotY ?? 0, 0);
     mesh.castShadow = b.shadow ?? false;
@@ -143,7 +145,8 @@ export function buildArea(area, models) {
     /** @type {Matrix4[]} */ (placements.get(model)).push(m);
   };
 
-  for (const room of area.rooms ?? []) buildRoom(room, place, colliderBox);
+  // Each room's pieces are instanced on their own, so rooms out of view are culled.
+  for (const room of area.rooms ?? []) buildRoom(room, (model, at, yaw, scale) => place(`${model}@${room.name}`, at, yaw, scale), colliderBox);
 
   for (const p of area.props ?? []) {
     place(p.model, p.at, p.yaw ?? 0, p.scale ?? 1);
@@ -168,10 +171,11 @@ export function buildArea(area, models) {
 
   if (models) {
     for (const [key, matrices] of placements) {
-      // "model!nodoor" draws the model without its door (KayKit's doorway has one, closed).
-      const [model, option] = key.split('!');
+      // "model!nodoor" draws the model without its door (KayKit's doorway has one, closed);
+      // "@room" groups a room's pieces.
+      const [model, option] = key.split('@')[0].split('!');
       const gltf = models[model];
-      if (gltf) root.add(instanced(gltf.scene, matrices, model, option === 'nodoor' ? (name) => name.endsWith('_door') : () => false));
+      if (gltf) root.add(instanced(gltf.scene, matrices, key, option === 'nodoor' ? (name) => name.endsWith('_door') : () => false));
     }
   }
   return root;

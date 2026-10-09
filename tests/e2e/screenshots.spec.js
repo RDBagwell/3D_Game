@@ -4,11 +4,12 @@ import { openGame } from './helpers.js';
 /**
  * Regenerates docs/screenshots/ (`npm run build && npm run screenshots`).
  *
- * Each shot freezes the game on a chosen simulation frame: the loop is
- * paused (rendering continues) and the simulation is stepped by hand, so the
- * same frame is captured every time. Rendered by headless Chromium in
- * software (SwiftShader): lighting and anti-aliasing match a real GPU, frame
- * rates don't.
+ * Each shot is the real game, set up through its own API (a new game, a
+ * few flags, the player placed), then frozen on a chosen simulation frame:
+ * the loop is paused (rendering continues) and the simulation is stepped by
+ * hand until the moment we want, so the same frame is captured every time.
+ * Rendered by headless Chromium in software (SwiftShader): lighting and
+ * anti-aliasing match a real GPU, frame rates don't.
  */
 
 /** @typedef {any} Game */
@@ -22,93 +23,148 @@ const SIZES = [
 ];
 
 /**
- * Pause the loop and step the simulation by hand until `until` is true.
+ * Start a new game (a finger on the phone, so its touch controls show).
  * @param {import('@playwright/test').Page} page
- * @param {string} until  JS expression over `g` (the game)
- * @param {{ attack?: boolean }} [opts]
+ * @param {string} size
  */
-async function stepUntil(page, until, opts = {}) {
-  await page.evaluate(
-    ([until, attack]) => {
-      const g = /** @type {Game} */ (window).game;
-      g.loop.pause();
-      // Slow the view's clock too, so sparks, flashes and damage numbers stay on screen.
-      g.show = { ...g.show, speed: 0.02 };
-      const idle = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: {} };
-      const press = { ...idle, buttons: { attack: { down: true, pressed: true, released: false } } };
-      if (attack) g.sandbox.step(press);
-      const test = new Function('g', `return (${until});`);
-      for (let i = 0; i < 600 && !test(g); i++) g.sandbox.step(idle);
-    },
-    [until, opts.attack ?? false],
-  );
-  // Let a few frames render the frozen state.
-  await page.waitForTimeout(400);
+async function newGame(page, size) {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('3d:settings', JSON.stringify({ touch: 'auto', quality: 'high' }));
+  });
+  await openGame(page);
+  const button = page.getByRole('button', { name: 'New game' });
+  await (size === 'phone' ? button.tap() : button.click());
+  await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
 }
 
 /**
+ * Run code in the page with `g` (the game) and `put(x, z, yaw)`.
  * @param {import('@playwright/test').Page} page
- * @param {{ x: number, z: number }} at
- * @param {number} facing
+ * @param {string} code
  */
-async function place(page, at, facing) {
-  await page.evaluate(
-    ([x, z, facing]) => {
-      const g = /** @type {Game} */ (window).game;
-      g.sandbox.player.body.teleport({ x, y: 0, z });
-      g.sandbox.player.facing = facing;
-      g.sandbox.camera.reset(g.sandbox.player.position, facing);
-    },
-    [at.x, at.z, facing],
-  );
+function setup(page, code) {
+  return page.evaluate(async (code) => {
+    const g = /** @type {Game} */ (window).game;
+    const put = (/** @type {number} */ x, /** @type {number} */ z, /** @type {number} */ yaw) => {
+      g.sandbox.player.body.teleport({ x, y: 0.2, z });
+      g.sandbox.player.facing = yaw;
+      g.sandbox.camera.reset(g.sandbox.player.position, yaw);
+    };
+    await new Function('g', 'put', `return (async () => { ${code} })()`)(g, put);
+  }, code);
+}
+
+/**
+ * Hide the messages that would cover the shot.
+ * @param {import('@playwright/test').Page} page
+ */
+function quiet(page) {
+  return page.evaluate(() => {
+    const g = /** @type {Game} */ (window).game;
+    g.hud.banner.hidden = true;
+    g.hud.toasts.replaceChildren();
+    g.hud.saved.hidden = true;
+  });
+}
+
+/**
+ * Pause the loop and step the simulation by hand until `until` is true.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} until  JS expression over `g` (the game)
+ */
+async function stepUntil(page, until) {
+  const reached = await page.evaluate((until) => {
+    const g = /** @type {Game} */ (window).game;
+    g.loop.pause();
+    // Slow the view's clock too, so sparks, flashes and rings hold still.
+    g.show = { ...g.show, speed: 0.02 };
+    const idle = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: {} };
+    const test = new Function('g', `return (${until});`);
+    for (let i = 0; i < 1200; i++) {
+      if (test(g)) return true;
+      if (g.adventure) g.adventure.step(idle, 1 / 60);
+      else g.sandbox.step(idle);
+    }
+    return false;
+  }, until);
+  if (!reached) throw new Error(`Never reached: ${until}`);
+  await page.waitForTimeout(500);
 }
 
 for (const size of SIZES) {
   test.describe(`screenshots @screenshots (${size.name})`, () => {
     test.use(size.use);
 
-    test(`sandbox (${size.name})`, async ({ page }) => {
-      await page.addInitScript(() => localStorage.setItem('3d:settings', JSON.stringify({ touch: 'auto' })));
-      await openGame(page);
-      const play = page.getByRole('button', { name: 'Play' });
-      await (size.name === 'phone' ? play.tap() : play.click()); // a finger on the phone, so its touch controls show
-      await page.evaluate(() => (/** @type {Game} */ (window).game.hud.banner.hidden = true));
-      await place(page, { x: 0.5, z: -2.55 }, Math.PI - 0.12);
-      // Freeze just after the slash lands: sparks, flash and a damage number.
-      await stepUntil(page, 'g.sandbox.dummies[0].hits > 0 && g.sandbox.hitstop > 0', { attack: true });
-      await page.screenshot({ path: `${OUT}/sandbox-${size.name}.png` });
+    test(`a conversation in the village (${size.name})`, async ({ page }) => {
+      await newGame(page, size.name);
+      await setup(page, `
+        const ina = g.sandbox.npcs.find((n) => n.id === 'ina');
+        put(ina.position.x - 0.4, ina.position.z + 1.7, Math.PI - 0.2);
+        g.adventure.events.emit('dialogue', { id: 'ina', npc: 'ina' });
+        // Through her greeting to the question, the whole line showing.
+        for (let i = 0; i < 6 && !g.dialogue.page?.choices; i++) { g.dialogue.confirm(); g.dialogue.confirm(); }
+        g.dialogue.confirm();`);
+      await quiet(page);
+      await page.waitForTimeout(2500); // the camera swings round to frame them
+      await page.screenshot({ path: `${OUT}/talk-${size.name}.png` });
+    });
+
+    test(`a locked-on fight in the Hearth Halls (${size.name})`, async ({ page }) => {
+      await newGame(page, size.name);
+      await setup(page, `
+        g.adventure.state.flags.add('gate_open');
+        await g.travel('halls', 'start');
+        put(0.5, -20.5, Math.PI - 0.7);
+        const adept = g.sandbox.foes.find((f) => f.kind === 'adept');
+        adept.brain.aware = true;
+        g.sandbox.setLock(adept);`);
+      await quiet(page);
+      // Mid-cast: the adept's staff glows, the warning sign shows.
+      await stepUntil(page, "g.sandbox.foes.some((f) => f.kind === 'adept' && f.state === 'cast' && f.brain.windupProgress > 0.6)");
+      await quiet(page);
+      await page.screenshot({ path: `${OUT}/dungeon-${size.name}.png` });
+    });
+
+    test(`the Cinder Warden (${size.name})`, async ({ page }) => {
+      await newGame(page, size.name);
+      await setup(page, `
+        for (const f of ['gate_open', 'hall_gate_open', 'vault_door_open']) g.adventure.state.flags.add(f);
+        await g.travel('halls', 'ante');
+        put(1.5, -81, Math.PI);
+        g.sandbox.setLock(g.sandbox.boss);`);
+      await quiet(page);
+      // Its sweep winding up: the ring shows the reach, the sign is up.
+      await stepUntil(page, "g.sandbox.boss && g.sandbox.boss.state === 'windup' && g.sandbox.boss.brain.windupProgress > 0.5");
+      await quiet(page);
+      await page.screenshot({ path: `${OUT}/boss-${size.name}.png` });
+    });
+
+    test(`the quest log (${size.name})`, async ({ page }) => {
+      await newGame(page, size.name);
+      await setup(page, `
+        for (const f of ['ina_met', 'gate_open', 'wren_met', 'wren_asked', 'dorran_met', 'trial_won', 'blade_given']) g.adventure.state.flags.add(f);
+        g.adventure.checkQuests(true);
+        g.pause();
+        g.menus.run('quests');`);
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: `${OUT}/quests-${size.name}.png` });
     });
 
     test(`lab with the hitbox view (${size.name})`, async ({ page }) => {
       // No performance HUD here: software-rendered frame rates would mislead.
       await openGame(page, '?lab&show=boxes,states,buffer,damage');
       await page.evaluate(() => (/** @type {Game} */ (window).game.hud.banner.hidden = true));
-      await place(page, { x: 0.4, z: -2.0 }, Math.PI - 0.1);
+      await setup(page, 'put(0.4, -2.0, Math.PI - 0.1);');
       // Freeze on the first active frame of the slash: the red hitbox is out.
-      await stepUntil(page, "g.sandbox.player.state === 'attack' && g.sandbox.player.attackFrameNow === g.sandbox.player.attack.startup", { attack: true });
+      await page.evaluate(() => {
+        const g = /** @type {Game} */ (window).game;
+        g.loop.pause();
+        g.show = { ...g.show, speed: 0.02 };
+        g.sandbox.step({ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: { attack: { down: true, pressed: true, released: false } } });
+      });
+      await stepUntil(page, "g.sandbox.player.state === 'attack' && g.sandbox.player.attackFrameNow === g.sandbox.player.attack.startup");
       await page.screenshot({ path: `${OUT}/lab-hitboxes-${size.name}.png` });
-    });
-
-    test(`grunt telegraph (${size.name})`, async ({ page }) => {
-      await openGame(page, '?lab&show=boxes,damage');
-      await page.evaluate(() => {
-        const g = /** @type {Game} */ (window).game;
-        g.lab.close();
-        g.hud.banner.hidden = true;
-      });
-      await place(page, { x: 0, z: -24.5 }, Math.PI);
-      // Mid wind-up: the shrinking ring, the "!" sign, the glowing blade.
-      await stepUntil(page, "g.sandbox.grunts.some((x) => x.state === 'windup' && x.brain.fsm.frames === 20)");
-      await page.evaluate(() => {
-        const g = /** @type {Game} */ (window).game;
-        const grunt = g.sandbox.grunts.find((x) => x.state === 'windup');
-        const p = g.sandbox.player.position;
-        // Frame the camera from behind the player towards the grunt.
-        const yaw = Math.atan2(grunt.position.x - p.x, grunt.position.z - p.z);
-        g.sandbox.camera.reset(p, yaw);
-      });
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: `${OUT}/telegraph-${size.name}.png` });
     });
   });
 }
