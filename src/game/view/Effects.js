@@ -86,14 +86,43 @@ export class Particles {
  * "Blocked", "Dodged". DOM elements, positioned by projecting the point each
  * frame.
  */
+/** Seconds a damage number stays open for more hits on the same target to add to it. */
+const MERGE_WITHIN = 0.6;
+
 export class Floaters {
   /** @param {HTMLElement} container */
   constructor(container) {
     this.layer = document.createElement('div');
     this.layer.className = 'floaters';
     container.append(this.layer);
-    /** @type {{ el: HTMLElement, pos: Vector3, age: number, life: number }[]} */
+    /** @type {{ el: HTMLElement, pos: Vector3, age: number, life: number, key?: string, total?: number }[]} */
     this.items = [];
+  }
+
+  /**
+   * A number that adds up: hits on the same target in quick succession
+   * update one floating total instead of stacking a pile of numbers.
+   * @param {string} key  what the number belongs to (a target's id)
+   * @param {number} amount
+   * @param {{ x: number, y: number, z: number }} at
+   * @param {(total: number) => string} format
+   * @param {string} [className]
+   */
+  addNumber(key, amount, at, format, className = '') {
+    const open = this.items.find((i) => i.key === key && i.age < MERGE_WITHIN);
+    if (open) {
+      open.total = (open.total ?? 0) + amount;
+      open.el.textContent = format(open.total);
+      open.age = 0;
+      open.el.classList.remove('bump');
+      void open.el.offsetWidth; // restart the bump animation
+      open.el.classList.add('bump');
+      return;
+    }
+    this.add(format(amount), at, className);
+    const item = this.items[this.items.length - 1];
+    item.key = key;
+    item.total = amount;
   }
 
   /**

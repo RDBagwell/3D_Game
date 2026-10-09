@@ -23,6 +23,8 @@ import { totalFrames } from '../data/attacks.js';
 
 const WHITE = new Color(1, 1, 1);
 const ORANGE = new Color(1, 0.45, 0.1);
+/** How far through the chop clip its wind-up peaks: where the charge pose holds. */
+const CHARGE_POSE = 0.35;
 
 export class CharacterView {
   /**
@@ -40,6 +42,8 @@ export class CharacterView {
     this.flash = 0;
     /** Seconds this view has been drawn (for short reactions like the block recoil). */
     this.time = 0;
+    /** The hero's blade is glowing (a full charge) and must be cleared when it ends. */
+    this.glowing = false;
     /** When the shield last took a blow (this.time), or -1. */
     this.blockedAt = -1;
     /** True while materials carry flash emissive that must be cleared. */
@@ -155,6 +159,14 @@ export class CharacterView {
       this.flashed = this.flash > 0;
       if (!frozen) this.flash -= dt / 0.12;
     }
+    // A full charge: the blade glows, pulsing.
+    if (this.kind === 'player') {
+      const glow = /** @type {any} */ (this.actor).charged ? 1.2 + Math.sin(this.time * 14) * 0.4 : 0;
+      if (glow > 0 || this.glowing) {
+        for (const mesh of this.model.weapon) /** @type {any} */ (mesh.material).emissive?.copy(ORANGE).multiplyScalar(glow);
+        this.glowing = glow > 0;
+      }
+    }
   }
 
   /**
@@ -203,6 +215,13 @@ export class CharacterView {
       case 'dead':
         this.setClip(`dead:${entry}`, ANIMATIONS.dead, { loop: false, duration: 1.2 });
         break;
+      case 'charge': {
+        // Draw the sword back (the chop's wind-up) and hold it there.
+        this.setClip(`charge:${entry}`, ANIMATIONS.charge, { loop: false, duration: (PLAYER.charge.frames / 60) / CHARGE_POSE, fade: 0.08 });
+        const a = this.animator.current;
+        if (a && a.time >= a.getClip().duration * CHARGE_POSE) a.timeScale = 0;
+        break;
+      }
       case 'fall':
         this.setClip('fall', ANIMATIONS.fall, { fade: 0.15 });
         break;

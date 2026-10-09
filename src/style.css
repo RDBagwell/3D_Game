@@ -38,6 +38,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* HUD */
 .hud { position: absolute; inset: 0; }
+/* Low health: red at the screen's edges (opacity set by the HUD). */
+.danger { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 50%, rgba(170, 10, 10, 0.75) 100%); }
+/* Where a hit came from: an arc on a ring round the middle of the screen. */
+.hit-arcs { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+.hit-arcs i { position: absolute; width: 140px; height: 26px; border-radius: 50% 50% 0 0 / 100% 100% 0 0; border-top: 6px solid rgba(255, 60, 40, 0.95); filter: drop-shadow(0 0 6px rgba(255, 60, 40, 0.8)); }
 .health { position: absolute; left: 20px; top: 18px; width: min(300px, 46vw); }
 .health-label { font: 700 12px/1 system-ui, sans-serif; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); margin-bottom: 6px; }
 .health-bar { position: relative; height: 20px; border-radius: 10px 4px 10px 4px; background: rgba(43, 29, 74, 0.75); border: 2px solid var(--cream); overflow: hidden; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
@@ -68,6 +73,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .floater.hurt { color: var(--red); }
 .floater.note { font-size: 16px; color: #b9e6ff; }
 .floater.note.good { color: #7dffa8; }
+.floater.note.big { font-size: 22px; }
+/* A merged damage number pops when another hit adds to it. */
+.floater.bump { animation: floater-bump 0.18s ease-out; }
+@keyframes floater-bump { from { scale: 1.35; } to { scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .floater.bump { animation: none; } }
 .perf-hud { position: absolute; left: 20px; top: 76px; margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.6); font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: #d6ffe0; }
 
 /* Menus */

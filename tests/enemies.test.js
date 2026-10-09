@@ -96,6 +96,20 @@ describe('projectiles', () => {
     expect(r.hp).toBe(r.maxHp);
   });
 
+  it('parried as the shield goes up, it flies back and hits the adept', async () => {
+    const events = [];
+    const r = await bolt((i, sb) => {
+      if (i === 0) {
+        sb.events.on('parry', () => events.push('parry'));
+        sb.events.on('hit', (e) => e.reflected && events.push('reflected hit'));
+      }
+      // Raise the shield just before it arrives (about 32 frames out).
+      return i >= 28 ? hold('shield') : idle;
+    });
+    expect(events).toEqual(['parry', 'reflected hit']);
+    expect(r.hp).toBe(r.maxHp);
+  });
+
   it('passes through a well-timed roll', async () => {
     // The bolt covers 5.3 m at 8.5 m/s: about 37 frames. Roll a little before.
     const r = await bolt((i) => (i === 26 ? { ...hold('roll'), move: { x: 0, y: -1 } } : idle));

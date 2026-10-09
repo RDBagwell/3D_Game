@@ -7,7 +7,7 @@ import { Enemy } from '../enemies/Enemy.js';
 import { Dummy } from '../enemies/Dummy.js';
 import { resolveSwing, attackPhase, hitSpheresAt, sphereHitsCapsule } from '../combat/hitboxes.js';
 import { PROJECTILES } from '../data/attacks.js';
-import { selectTarget, switchTarget, shouldBreakLock } from '../combat/lockOn.js';
+import { selectTarget, switchTarget, shouldBreakLock, LOCK } from '../combat/lockOn.js';
 import { defaultFeel } from '../feel/feelSettings.js';
 import { buildArea } from '../world/buildArea.js';
 import { AREAS } from '../data/areas/index.js';
@@ -42,6 +42,9 @@ import { OBJECTS, USE_RANGE, HEARTHSTONE_RANGE } from '../data/objects.js';
  * what is solid, and when the player reaches, strikes or uses them
  * ('interact', 'objectHit', 'touch', 'exit').
  */
+
+/** How fast (radians per second) a parried bolt curves after the enemy that threw it. */
+const REFLECT_HOMING = 2.5;
 
 /** Actions recorded in the input buffer. */
 const BUFFERED = ['attack', 'roll', 'useItem'];
@@ -173,6 +176,8 @@ export class Sandbox {
     /** @type {Enemy | Dummy | null} */
     this.lockTarget = null;
     this.flick = { sum: 0, frames: 0, cooldown: 0 };
+    /** Frames the locked target has been out of sight. */
+    this.lockHidden = 0;
     this.respawnTimer = 0;
     /** Last step's lock-on recentre request (consumed by the camera). @type {number | null} */
     this.recenter = null;
@@ -403,13 +408,18 @@ export class Sandbox {
     const axes = this.camera.groundAxes();
     this.recenter = null;
     if (this.lockTarget && shouldBreakLock(this.lockTarget, p)) this.setLock(null);
+    // Out of sight behind a wall for too long: let go.
+    if (this.lockTarget) {
+      this.lockHidden = this.canSee(this.lockTarget) ? 0 : this.lockHidden + 1;
+      if (this.lockHidden > LOCK.losGrace) this.setLock(null);
+    }
     if (this.autoLockPause > 0) this.autoLockPause--;
     if (this.autoLock && !this.lockTarget && this.autoLockPause === 0) {
       // The nearest enemy that's after you, within reach of a fight.
       let best = null;
       let bestD = 9;
       for (const f of this.foes) {
-        if (!f.alive || !f.brain.aware) continue;
+        if (!f.alive || !f.brain.aware || !this.canSee(f)) continue;
         const d = Math.hypot(f.position.x - p.x, f.position.z - p.z);
         if (d < bestD) {
           bestD = d;
@@ -425,7 +435,7 @@ export class Sandbox {
         // Let go on purpose: don't grab another for a few seconds.
         this.autoLockPause = 180;
       } else {
-        const target = selectTarget(this.enemies, p, axes.forward);
+        const target = selectTarget(this.enemies, p, axes.forward, {}, (c) => this.canSee(/** @type {any} */ (c)));
         if (target) this.setLock(/** @type {Enemy | Dummy} */ (target));
         else this.recenter = this.player.facing;
       }
@@ -436,7 +446,7 @@ export class Sandbox {
     if (this.lockTarget) {
       this.flick.sum = this.flick.sum * 0.8 + frame.look.x;
       if (Math.abs(this.flick.sum) > 0.12 && this.flick.cooldown === 0) {
-        const next = switchTarget(this.lockTarget, this.enemies, p, axes.right, this.flick.sum > 0 ? 1 : -1);
+        const next = switchTarget(this.lockTarget, this.enemies, p, axes.right, this.flick.sum > 0 ? 1 : -1, {}, (c) => this.canSee(/** @type {any} */ (c)));
         if (next !== this.lockTarget) this.setLock(/** @type {Enemy | Dummy} */ (next));
         this.flick.cooldown = 18;
         this.flick.sum = 0;
@@ -446,10 +456,44 @@ export class Sandbox {
     }
   }
 
+  /**
+   * Nothing solid (walls, pillars, closed gates) between the hero's eyes and
+   * the target's chest.
+   * @param {{ position: { x: number, y: number, z: number }, height?: number }} target
+   */
+  canSee(target) {
+    const p = this.player.position;
+    const from = { x: p.x, y: p.y + 1.5, z: p.z };
+    const to = { x: target.position.x, y: target.position.y + (target.height ?? 1.6) * 0.6, z: target.position.z };
+    const d = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+    if (d < 0.5) return true;
+    const dir = { x: (to.x - from.x) / d, y: (to.y - from.y) / d, z: (to.z - from.z) / d };
+    return this.physics.rayDistance(from, dir, d - 0.3) === null;
+  }
+
+  /**
+   * An enemy fell: it stops blocking the way, and a lock on it moves to the
+   * next enemy nearest that direction (if there's one in sight).
+   * @param {Enemy} target
+   */
+  onKilled(target) {
+    target.body.setSolid?.(false);
+    if (this.lockTarget !== target) return;
+    const p = this.player.position;
+    const dx = target.position.x - p.x;
+    const dz = target.position.z - p.z;
+    const len = Math.hypot(dx, dz) || 1;
+    // Only enemies that fight back (not the training dummy).
+    const others = this.foes.filter((e) => e !== target);
+    const next = selectTarget(others, p, { x: dx / len, z: dz / len }, { maxAngleDeg: 180 }, (c) => this.canSee(/** @type {any} */ (c)));
+    this.setLock(/** @type {Enemy | Dummy | null} */ (next));
+  }
+
   /** @param {Enemy | Dummy | null} target */
   setLock(target) {
     const old = this.lockTarget;
     this.lockTarget = target;
+    this.lockHidden = 0;
     if (target) this.emit('lockOn', { target, previous: old });
     else if (old) this.emit('lockOff', { previous: old });
   }
@@ -559,12 +603,38 @@ export class Sandbox {
       p.prev.y = p.position.y;
       p.prev.z = p.position.z;
       p.age += TICK;
-      const step = Math.hypot(p.velocity.x, p.velocity.z) * TICK;
-      const dir = { x: p.velocity.x / def.speed, y: 0, z: p.velocity.z / def.speed };
+      const speed = Math.hypot(p.velocity.x, p.velocity.z) || 1;
+      const step = speed * TICK;
+      const dir = { x: p.velocity.x / speed, y: 0, z: p.velocity.z / speed };
       const wall = this.physics.rayDistance(p.position, dir, step + def.radius * 0.5);
       p.position.x += p.velocity.x * TICK;
       p.position.z += p.velocity.z * TICK;
       const sphere = { ...p.position, r: def.radius };
+      // A parried bolt flies back, curving gently after its thrower, and hits
+      // whoever it reaches first.
+      if (p.reflected) {
+        if (p.owner.alive) {
+          const want = Math.atan2(p.owner.position.x - p.position.x, p.owner.position.z - p.position.z);
+          const now = Math.atan2(p.velocity.x, p.velocity.z);
+          const yaw = approachAngle(now, want, REFLECT_HOMING * TICK);
+          p.velocity.x = Math.sin(yaw) * speed;
+          p.velocity.z = Math.cos(yaw) * speed;
+        }
+        const foe = this.foes.find((f) => f.alive && sphereHitsCapsule(f.position, f.radius, f.height, sphere));
+        if (foe) {
+          const damage = Math.max(1, Math.round(def.damage * 1.5 * foe.brain.damageTaken));
+          const knockback = { x: dir.x * def.knockback, z: dir.z * def.knockback };
+          const wasAlive = foe.alive;
+          foe.takeHit({ damage, poise: 999, knockback });
+          this.hitstop = Math.max(this.hitstop, Math.round(def.hitstop * Number(this.feel.hitstopScale)));
+          this.emit('hit', { attacker: player, target: foe, attack: def, point: { ...p.position }, direction: dir, projectile: p, damage, killed: wasAlive && !foe.alive, reflected: true });
+          if (wasAlive && !foe.alive) this.onKilled(foe);
+          this.endProjectile(p, 'hit');
+          continue;
+        }
+        if ((wall !== null && wall <= step) || p.age >= def.life) this.endProjectile(p, p.age >= def.life ? 'fizzle' : 'wall');
+        continue;
+      }
       if (swordSpheres.some((s) => Math.hypot(s.x - sphere.x, s.y - sphere.y, s.z - sphere.z) <= s.r + sphere.r)) {
         this.endProjectile(p, 'cut');
         this.hitstop = Math.max(this.hitstop, Math.round(3 * Number(this.feel.hitstopScale)));
@@ -577,6 +647,20 @@ export class Sandbox {
         if (player.isInvulnerable()) {
           if (!p.dodged) this.emit('dodge', base);
           p.dodged = true;
+        } else if (player.blocks(from) && player.parrying) {
+          // Parried: it goes back at whoever threw it, a little faster.
+          const back = speed * 1.15;
+          const o = p.owner.alive ? p.owner.position : null;
+          const ox = o ? o.x - p.position.x : -dir.x;
+          const oz = o ? o.z - p.position.z : -dir.z;
+          const ol = Math.hypot(ox, oz) || 1;
+          p.velocity.x = (ox / ol) * back;
+          p.velocity.z = (oz / ol) * back;
+          p.reflected = true;
+          p.age = 0;
+          this.hitstop = Math.max(this.hitstop, Math.round(PLAYER.parry.hitstop * Number(this.feel.hitstopScale)));
+          this.emit('parry', base);
+          continue;
         } else if (player.blocks(from)) {
           player.blockHit({ knockback });
           this.hitstop = Math.max(this.hitstop, Math.round(2 * Number(this.feel.hitstopScale)));
@@ -731,6 +815,9 @@ export class Sandbox {
     const force = attack.knockback * Number(this.feel.knockbackScale);
     const knockback = { x: dx * force, z: dz * force };
     const base = { attacker, target, attack, point: result.point, direction: { x: dx, y: 0, z: dz } };
+    // The shield bash goes through a guard (and breaks it).
+    const guardBroken = result.result === 'blocked' && Boolean(attack.guardBreak);
+    if (guardBroken) result = { ...result, result: 'hit' };
 
     if (result.result === 'hit') {
       const wasAlive = target.alive;
@@ -740,18 +827,27 @@ export class Sandbox {
       if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
       if (target instanceof Enemy) damage = Math.max(1, Math.round(damage * target.brain.damageTaken));
       if (target instanceof Player) damage = Math.max(1, Math.round(damage * this.damageTaken));
-      target.takeHit({ damage, poise: attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
+      target.takeHit({ damage, poise: guardBroken ? 999 : attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
       this.hitstop = Math.max(this.hitstop, Math.round(attack.hitstop * Number(this.feel.hitstopScale)));
       const weak = target instanceof Enemy && target.brain.damageTaken > 1;
-      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter, weak });
-      if (wasAlive && !target.alive && target instanceof Enemy) {
-        target.body.setSolid?.(false);
-        if (this.lockTarget === target) this.setLock(null);
-      }
+      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter, weak, guardBroken });
+      if (wasAlive && !target.alive && target instanceof Enemy) this.onKilled(target);
+    } else if (result.result === 'blocked' && target instanceof Player && target.parrying && attacker instanceof Enemy) {
+      // Parried: the attacker is thrown off balance (a poise break) and the
+      // hero takes nothing.
+      attacker.takeHit({ damage: 0, poise: 999, knockback: { x: -knockback.x * 0.6, z: -knockback.z * 0.6 } });
+      this.hitstop = Math.max(this.hitstop, Math.round(PLAYER.parry.hitstop * Number(this.feel.hitstopScale)));
+      this.emit('parry', base);
     } else if (result.result === 'blocked') {
       target.blockHit({ knockback });
+      // Blocking isn't free for the hero: a little chip damage, never the last point.
+      let chip = 0;
+      if (target instanceof Player) {
+        chip = Math.min(target.hp - 1, Math.max(1, Math.round(attack.damage * PLAYER.blockChip * this.damageTaken)));
+        if (chip > 0) target.hp -= chip;
+      }
       this.hitstop = Math.max(this.hitstop, Math.round(2 * Number(this.feel.hitstopScale)));
-      this.emit('block', base);
+      this.emit('block', { ...base, chip });
     } else {
       this.emit('dodge', base);
     }
@@ -877,6 +973,7 @@ export class Sandbox {
  * @property {{ x: number, z: number }} velocity
  * @property {number} age  seconds
  * @property {boolean} dodged  already rolled through once
+ * @property {boolean} [reflected]  parried: it now flies back and hits enemies
  * @property {boolean} [ended]
  */
 

@@ -25,6 +25,8 @@ export function playerHarness(feel = {}) {
   const events = [];
   let tick = 0;
   let lockTarget = null;
+  /** @type {any[]} */
+  let enemies = [];
 
   /**
    * One update.
@@ -47,7 +49,7 @@ export function playerHarness(feel = {}) {
         axes: { forward: { x: 0, z: -1 }, right: { x: 1, z: 0 } },
         feel: values,
         lockTarget,
-        enemies: [],
+        enemies,
         emit: (name, data) => events.push({ name, data, tick }),
       },
     );
@@ -68,5 +70,7 @@ export function playerHarness(feel = {}) {
     get tick() { return tick; },
     /** @param {any} target */
     setLock(target) { lockTarget = target; },
+    /** @param {any[]} list  enemies for aim assist */
+    setEnemies(list) { enemies = list; },
   };
 }

@@ -671,6 +671,14 @@ export class Game {
     });
     sandbox.events.on('roar', () => this.hud.showBanner('The Warden roars! Cindermites crawl out of the ash.', 3));
     sandbox.events.on('hit', (d) => {
+      // Where it came from, on the edge of the screen (relative to the camera).
+      if (d.target === sandbox.player && d.attacker?.position) {
+        const p = sandbox.player.position;
+        const dx = d.attacker.position.x - p.x;
+        const dz = d.attacker.position.z - p.z;
+        const { forward, right } = sandbox.camera.groundAxes();
+        this.hud.hitFrom(Math.atan2(dx * right.x + dz * right.z, dx * forward.x + dz * forward.z));
+      }
       if (!d.killed || d.target.def?.brain !== 'warden') return;
       this.music.play(MUSIC.victory, { loop: false, then: sandbox.area.music });
       this.hud.showBanner('The Cinder Warden crumbles. Something glows in the ash.', 4);
@@ -784,6 +792,7 @@ export class Game {
       this.adventure?.announceQuests();
     }
     this.hud.updateHealth(dt, sb.player);
+    if (this.hud.heartDue && this.mode === 'play') this.audio.play('heartbeat');
     const t = sb.lockTarget;
     this.hud.updateReticle(t ? this.view.project({ x: t.position.x, y: t.position.y + t.height * 0.6, z: t.position.z }) : null, t);
     const boss = sb.boss;

@@ -287,4 +287,119 @@ describe('player state machine', () => {
     h.step();
     expect(h.player.state).toBe('idle');
   });
+
+  it('the opening swing depends on what the hero was doing', () => {
+    // Out of a full run: the running thrust.
+    const run = playerHarness({ accelTime: 0 });
+    run.steps(10, { move: { x: 0, y: 1 } });
+    run.step({ move: { x: 0, y: 1 }, press: ['attack'] });
+    expect(run.player.attackKey).toBe('dashSlash');
+    // From a standstill: the ordinary slash.
+    const still = playerHarness();
+    still.step({ press: ['attack'] });
+    expect(still.player.attackKey).toBe('slash1');
+    // Out of the end of a roll: the rolling sweep.
+    const roll = playerHarness({ rollBuffer: 8, comboBuffer: 10 });
+    roll.step({ press: ['roll'] });
+    roll.steps(PLAYER.roll.actFrom - 2);
+    roll.step({ press: ['attack'] });
+    roll.steps(3);
+    expect(roll.player.attackKey).toBe('rollSlash');
+    // Attack with the shield up: the bash.
+    const shield = playerHarness();
+    shield.step({ hold: ['shield'] });
+    shield.step({ hold: ['shield'], press: ['attack'] });
+    expect(shield.player.attackKey).toBe('bash');
+  });
+
+  it('a pause before the third press turns the chop into a thrust', () => {
+    const quick = playerHarness({ comboBuffer: 10 });
+    quick.step({ press: ['attack'] });
+    quick.steps(ATTACKS.slash1.chainFrom - 2);
+    quick.step({ press: ['attack'] }); // slash2
+    quick.steps(ATTACKS.slash1.chainFrom + 2);
+    quick.step({ press: ['attack'] });
+    quick.steps(ATTACKS.slash2.chainFrom + 2);
+    expect(quick.player.attackKey).toBe('slash3');
+
+    const paused = playerHarness({ comboBuffer: 10 });
+    paused.step({ press: ['attack'] });
+    paused.steps(ATTACKS.slash1.chainFrom - 2);
+    paused.step({ press: ['attack'] });
+    paused.steps(ATTACKS.slash1.chainFrom + 2);
+    expect(paused.player.attackKey).toBe('slash2');
+    // Wait until slash2 is over, then press.
+    paused.steps(totalFrames(ATTACKS.slash2));
+    expect(paused.player.state).toBe('idle');
+    paused.step({ press: ['attack'] });
+    expect(paused.player.attackKey).toBe('thrust');
+    // ...but only just after: later, it's a fresh slash.
+    const late = playerHarness({ comboBuffer: 10 });
+    late.step({ press: ['attack'] });
+    late.steps(ATTACKS.slash1.chainFrom - 2);
+    late.step({ press: ['attack'] });
+    late.steps(totalFrames(ATTACKS.slash2) + PLAYER.combo.pauseWindow + 20);
+    late.step({ press: ['attack'] });
+    expect(late.player.attackKey).toBe('slash1');
+  });
+
+  it('holding attack through a swing charges the sword; letting go when full swings the charged chop', () => {
+    const h = playerHarness();
+    h.step({ press: ['attack'], hold: ['attack'] });
+    h.steps(totalFrames(ATTACKS.slash1), { hold: ['attack'] });
+    expect(h.player.state).toBe('charge');
+    h.steps(PLAYER.charge.frames, { hold: ['attack'] });
+    expect(h.player.charged).toBe(true);
+    expect(h.events.some((e) => e.name === 'charged')).toBe(true);
+    h.step(); // let go
+    expect(h.player.state).toBe('attack');
+    expect(h.player.attackKey).toBe('chargeChop');
+
+    // Let go early: nothing.
+    const early = playerHarness();
+    early.step({ press: ['attack'], hold: ['attack'] });
+    early.steps(totalFrames(ATTACKS.slash1), { hold: ['attack'] });
+    expect(early.player.state).toBe('charge');
+    early.steps(5, { hold: ['attack'] });
+    early.step();
+    expect(early.player.state).toBe('idle');
+  });
+
+  it('raising the shield opens a short parry window, but not when tapped again at once', () => {
+    const h = playerHarness();
+    h.step({ hold: ['shield'] });
+    expect(h.player.parrying).toBe(true);
+    h.steps(PLAYER.parry.window, { hold: ['shield'] });
+    expect(h.player.parrying).toBe(false);
+    h.step(); // lower it
+    h.step({ hold: ['shield'] }); // and straight back up
+    expect(h.player.state).toBe('shield');
+    expect(h.player.parrying).toBe(false);
+    h.steps(PLAYER.parry.cooldown + 2); // wait
+    h.step({ hold: ['shield'] });
+    expect(h.player.parrying).toBe(true);
+  });
+
+  it('aim assist keeps tracking its target through the wind-up', () => {
+    const h = playerHarness({ aimAssist: 1 });
+    // An enemy 2 m ahead (-Z), a little to the right.
+    const foe = { position: { x: 0.4, y: 0, z: -2 }, alive: true };
+    h.setEnemies([foe]);
+    h.step({ press: ['attack'] });
+    const start = h.player.facing;
+    // It sidesteps right during the wind-up; the swing follows.
+    foe.position.x = 1.6;
+    h.steps(ATTACKS.slash1.startup - 1);
+    const want = Math.atan2(foe.position.x - h.body.position.x, foe.position.z - h.body.position.z);
+    const before = Math.abs(((want - start + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    const after = Math.abs(((want - h.player.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+    expect(after).toBeLessThan(before);
+    // With aim assist off, it doesn't.
+    const off = playerHarness({ aimAssist: 0 });
+    off.setEnemies([{ position: { x: 0.4, y: 0, z: -2 }, alive: true }]);
+    off.step({ press: ['attack'] });
+    const f0 = off.player.facing;
+    off.steps(ATTACKS.slash1.startup - 1);
+    expect(off.player.facing).toBe(f0);
+  });
 });

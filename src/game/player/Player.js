@@ -1,4 +1,4 @@
-import { StateMachine, approach, approachAngle, yawFromDirection, DEG, button } from '../../engine/index.js';
+import { StateMachine, approach, approachAngle, angleDelta, yawFromDirection, DEG, button } from '../../engine/index.js';
 import { ATTACKS, totalFrames, PLAYER_COMBO } from '../data/attacks.js';
 import { PLAYER } from '../data/actors.js';
 import { attackPhase, isInFront } from '../combat/hitboxes.js';
@@ -12,6 +12,7 @@ import { attackPhase, isInFront } from '../combat/hitboxes.js';
  *   any → hitstun → idle/run/strafe   any → knockdown → idle/run/strafe   any → dead
  *   idle/run/strafe/shield → drink (a tonic from the quick slot) → idle/run/strafe
  *   idle/run/strafe → fall (off an edge) → land (a long drop) → idle/run/strafe
+ *   attack (attack held through the swing) → charge → attack (charged chop) or idle
  *
  * TRANSITIONS below is the full table. Each state in `states()` owns:
  *   - its animation (ANIMATIONS, read by the view),
@@ -24,14 +25,15 @@ import { attackPhase, isInFront } from '../combat/hitboxes.js';
  * runs in Node for tests.
  */
 
-/** @typedef {'idle' | 'run' | 'strafe' | 'attack' | 'roll' | 'shield' | 'drink' | 'fall' | 'land' | 'hitstun' | 'knockdown' | 'dead'} PlayerState */
+/** @typedef {'idle' | 'run' | 'strafe' | 'attack' | 'roll' | 'shield' | 'drink' | 'charge' | 'fall' | 'land' | 'hitstun' | 'knockdown' | 'dead'} PlayerState */
 
 /** @type {Record<PlayerState, PlayerState[]>} */
 export const TRANSITIONS = {
   idle: ['run', 'strafe', 'attack', 'roll', 'shield', 'drink', 'fall', 'hitstun', 'knockdown', 'dead'],
   run: ['idle', 'strafe', 'attack', 'roll', 'shield', 'drink', 'fall', 'hitstun', 'knockdown', 'dead'],
   strafe: ['idle', 'run', 'attack', 'roll', 'shield', 'drink', 'fall', 'hitstun', 'knockdown', 'dead'],
-  attack: ['attack', 'idle', 'run', 'strafe', 'roll', 'hitstun', 'knockdown', 'dead'],
+  attack: ['attack', 'charge', 'idle', 'run', 'strafe', 'roll', 'hitstun', 'knockdown', 'dead'],
+  charge: ['attack', 'idle', 'run', 'strafe', 'roll', 'hitstun', 'knockdown', 'dead'],
   roll: ['idle', 'run', 'strafe', 'attack', 'roll', 'hitstun', 'knockdown', 'dead'],
   shield: ['idle', 'run', 'strafe', 'attack', 'roll', 'drink', 'hitstun', 'knockdown', 'dead'],
   drink: ['idle', 'run', 'strafe', 'hitstun', 'knockdown', 'dead'],
@@ -61,6 +63,7 @@ export const ANIMATIONS = {
   rollRight: 'Dodge_Right',
   shield: 'Blocking',
   drink: 'Use_Item',
+  charge: '1H_Melee_Attack_Chop',
   fall: 'Jump_Idle',
   land: 'Jump_Land',
   hitstun: 'Hit_A',
@@ -127,6 +130,20 @@ export class Player {
     this.swingId = 0;
     /** The tonic being drunk has taken effect. */
     this.drank = false;
+    /** Updates the attack button has been held without a break (charging). */
+    this.attackHeld = 0;
+    /** Updates spent charging, and whether the charge is full. */
+    this.chargeFrames = 0;
+    this.charged = false;
+    /** A pause combo waiting for a press: its attack, and the last tick it can start. @type {{ key: string, until: number } | null} */
+    this.pauseChain = null;
+    /** What aim assist chose at the start of this swing, tracked through its wind-up. @type {{ position: { x: number, z: number }, alive: boolean } | null} */
+    this.assistTarget = null;
+    /** Frames of parry window this time the shield went up, and when it last came down. */
+    this.parryWindow = 0;
+    this.shieldDownTick = -Infinity;
+    /** The camera's yaw last update with the shield up (turning it turns the shield). @type {number | null} */
+    this.shieldCameraYaw = null;
     this.rollDir = { x: 0, z: 1 };
     /** Updates spent falling (the fall state). */
     this.fallFrames = 0;
@@ -203,6 +220,7 @@ export class Player {
   update(frame, ctx) {
     this.frame = frame;
     this.ctx = ctx;
+    this.attackHeld = button(frame, 'attack').down ? this.attackHeld + 1 : 0;
     if (this.invulnerableFrames > 0) this.invulnerableFrames--;
     this.fsm.update(ctx.dt);
     // Knockback slides the hero whatever the state, and fades quickly.
@@ -232,8 +250,23 @@ export class Player {
         update: () => this.updateRoll(),
       },
       shield: {
-        enter: () => this.ctx?.emit('shieldUp', { position: this.position }),
+        enter: () => {
+          // A parry window, unless the shield was only just lowered (no tapping).
+          const since = (this.ctx?.tick ?? 0) - this.shieldDownTick;
+          this.parryWindow = since >= PLAYER.parry.cooldown ? PLAYER.parry.window : 0;
+          this.shieldCameraYaw = null;
+          this.ctx?.emit('shieldUp', { position: this.position });
+        },
         update: () => this.updateShield(),
+        exit: () => (this.shieldDownTick = this.ctx?.tick ?? 0),
+      },
+      charge: {
+        enter: () => {
+          this.chargeFrames = 0;
+          this.charged = false;
+        },
+        update: () => this.updateCharge(),
+        exit: () => (this.charged = false),
       },
       drink: {
         enter: () => {
@@ -297,7 +330,7 @@ export class Player {
     }
     if (this.tryRoll()) return;
     if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
-      this.attackKey = PLAYER_COMBO[0];
+      this.attackKey = this.opener('ground');
       this.fsm.go('attack');
       return;
     }
@@ -368,6 +401,7 @@ export class Player {
     this.attackFrameNow = -1;
     this.swingHits = new Set();
     this.swingId++;
+    this.assistTarget = null;
     // Turn to the stick direction, then let aim assist (or the lock) correct it.
     const dir = this.moveDirection();
     if (ctx.lockTarget) {
@@ -384,21 +418,23 @@ export class Player {
     const ctx = /** @type {PlayerContext} */ (this.ctx);
     const strength = Number(ctx.feel.aimAssist);
     if (strength <= 0) return;
-    const maxTurn = 75 * DEG * strength;
+    const maxTurn = PLAYER.aimAssist.maxTurnDeg * DEG * strength;
     let best = null;
     let bestScore = Infinity;
+    const { range } = PLAYER.aimAssist;
     for (const enemy of ctx.enemies) {
       if (!enemy.alive) continue;
       const dx = enemy.position.x - this.position.x;
       const dz = enemy.position.z - this.position.z;
       const dist = Math.hypot(dx, dz);
-      if (dist > 3.2 || dist < 0.01) continue;
+      if (dist > range || dist < 0.01) continue;
       const turn = Math.abs(approachAngle(0, yawFromDirection(dx, dz) - this.facing, Math.PI));
       if (turn > maxTurn) continue;
       const score = turn + dist * 0.2;
       if (score < bestScore) {
         bestScore = score;
         best = yawFromDirection(dx, dz);
+        this.assistTarget = enemy;
       }
     }
     if (best !== null) this.facing = approachAngle(this.facing, best, maxTurn);
@@ -420,17 +456,34 @@ export class Player {
       this.slowDown(0.06);
     }
     if (ctx.lockTarget && f < 3) this.turnTowards(ctx.lockTarget.position);
+    // Aim assist keeps tracking its target through the wind-up, so a
+    // sidestep doesn't dodge a swing that had already found it.
+    else if (!ctx.lockTarget && phase === 'startup' && this.assistTarget?.alive) {
+      const t = this.assistTarget.position;
+      const rate = PLAYER.aimAssist.trackDegPerSec * Number(ctx.feel.aimAssist) * DEG * ctx.dt;
+      this.facing = approachAngle(this.facing, yawFromDirection(t.x - this.position.x, t.z - this.position.z), rate);
+    }
 
     // Roll cancel: only inside the cancel window (when the lab allows it).
     if (ctx.feel.cancelWindows && f >= attack.rollCancelFrom && this.tryRoll()) return;
 
     // Combo: a press since this attack started, within the buffer window.
     if (attack.next && f >= attack.chainFrom && ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer), this.attackStartTick + 1)) {
-      this.attackKey = attack.next;
+      // A press that came late (a pause) takes the attack's pause variant.
+      this.attackKey = attack.pauseNext && f >= attack.chainFrom + PLAYER.combo.pauseFrom ? attack.pauseNext : attack.next;
       this.fsm.go('attack');
       return;
     }
-    if (f >= totalFrames(attack) - 1) this.toLocomotion();
+    if (f >= totalFrames(attack) - 1) {
+      // Held the button the whole swing: draw the sword back to charge.
+      if (this.attackHeld >= totalFrames(attack) - 1 && this.attackKey !== 'chargeChop' && this.attackKey !== 'bash') {
+        this.fsm.go('charge');
+        return;
+      }
+      // A press just after this ends still counts as a pause combo.
+      this.pauseChain = attack.pauseNext ? { key: attack.pauseNext, until: ctx.tick + PLAYER.combo.pauseWindow } : null;
+      this.toLocomotion();
+    }
   }
 
   startRoll() {
@@ -468,7 +521,7 @@ export class Player {
       const ctx = /** @type {PlayerContext} */ (this.ctx);
       if (this.tryRoll()) return;
       if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
-        this.attackKey = PLAYER_COMBO[0];
+        this.attackKey = this.opener('roll');
         this.fsm.go('attack');
         return;
       }
@@ -512,8 +565,9 @@ export class Player {
     const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
     if (this.tryRoll()) return;
     if (this.tryDrink()) return;
+    // Attack with the shield up: a bash that breaks a blocking enemy's guard.
     if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
-      this.attackKey = PLAYER_COMBO[0];
+      this.attackKey = 'bash';
       this.fsm.go('attack');
       return;
     }
@@ -524,6 +578,68 @@ export class Player {
     const dir = this.moveDirection();
     this.accelerate(dir.x * PLAYER.shieldSpeed, dir.z * PLAYER.shieldSpeed, PLAYER.runSpeed);
     if (ctx.lockTarget) this.turnTowards(ctx.lockTarget.position);
+    else {
+      // Not locked on: turning the camera turns the shield with it, so you
+      // can face a new threat without letting it down.
+      const f = ctx.axes.forward;
+      const cam = yawFromDirection(f.x, f.z);
+      if (this.shieldCameraYaw !== null) {
+        const want = this.facing + angleDelta(this.shieldCameraYaw, cam);
+        this.facing = approachAngle(this.facing, want, PLAYER.shieldTurnSpeed * DEG * ctx.dt);
+      }
+      this.shieldCameraYaw = cam;
+    }
+  }
+
+  /** The shield went up in the last few frames: a blow now is parried. */
+  get parrying() {
+    return this.fsm.is('shield') && this.fsm.frames < this.parryWindow;
+  }
+
+  /**
+   * The attack a fresh press starts, from what the hero was doing.
+   * @param {'ground' | 'roll'} from
+   * @returns {string}
+   */
+  opener(from) {
+    const ctx = /** @type {PlayerContext} */ (this.ctx);
+    if (this.pauseChain && ctx.tick <= this.pauseChain.until) {
+      const key = this.pauseChain.key;
+      this.pauseChain = null;
+      return key;
+    }
+    this.pauseChain = null;
+    if (from === 'roll') return 'rollSlash';
+    if (this.fsm.is('run') && Math.hypot(this.velocity.x, this.velocity.z) >= PLAYER.runSpeed * PLAYER.dashFrom) return 'dashSlash';
+    return PLAYER_COMBO[0];
+  }
+
+  /**
+   * Charging: a slow walk with the sword drawn back. Let go when it's full
+   * for the charged chop; let go early and nothing happens.
+   */
+  updateCharge() {
+    const ctx = /** @type {PlayerContext} */ (this.ctx);
+    const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
+    if (this.tryRoll()) return;
+    this.chargeFrames++;
+    if (!this.charged && this.chargeFrames >= PLAYER.charge.frames) {
+      this.charged = true;
+      ctx.emit('charged', { position: this.position, player: this });
+    }
+    if (!button(frame, 'attack').down) {
+      if (this.charged) {
+        this.attackKey = 'chargeChop';
+        this.fsm.go('attack');
+      } else {
+        this.toLocomotion();
+      }
+      return;
+    }
+    const dir = this.moveDirection();
+    this.accelerate(dir.x * PLAYER.charge.walkSpeed, dir.z * PLAYER.charge.walkSpeed, PLAYER.runSpeed);
+    if (ctx.lockTarget) this.turnTowards(ctx.lockTarget.position);
+    else if (dir.amount > 0.05) this.turn(yawFromDirection(dir.x, dir.z));
   }
 
   // ----------------------------------------------------------------- helpers
