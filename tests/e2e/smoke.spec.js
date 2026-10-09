@@ -47,6 +47,29 @@ test.describe('smoke', () => {
     expect(errors).toEqual([]);
   });
 
+  test('drinking a tonic with the sound on heals, and the game keeps running', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    // The click above was a gesture, so the sound can be unlocked.
+    await page.keyboard.press('Shift');
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.audio.unlocked);
+    const before = await page.evaluate(() => {
+      const g = /** @type {Game} */ (window).game;
+      g.sandbox.player.hp = 1;
+      return { tonics: g.adventure.state.itemCount('tonic'), ticks: g.loop.tickCount };
+    });
+    expect(before.tonics).toBeGreaterThan(0);
+    await page.keyboard.press('KeyR');
+    await page.waitForFunction((n) => /** @type {Game} */ (window).game.adventure.state.itemCount('tonic') === n - 1, before.tonics, { timeout: 60_000 });
+    expect(await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.player.hp)).toBeGreaterThan(1);
+    // Still stepping after the drink.
+    const ticks = await page.evaluate(() => /** @type {Game} */ (window).game.loop.tickCount);
+    await page.waitForFunction((t) => /** @type {Game} */ (window).game.loop.tickCount > t + 10, ticks);
+    expect(errors).toEqual([]);
+  });
+
   test('talking to Elder Ina: the prompt, the dialogue box, a choice', async ({ page }) => {
     const errors = collectErrors(page);
     await openGame(page);
@@ -122,9 +145,9 @@ test.describe('smoke', () => {
       return out;
     });
     // No growth from trip to trip. (The leak this guards against added about
-    // 150 textures per round trip; a few vary with when neighbouring areas
-    // are precompiled in idle time.)
-    expect(Math.max(...counts.slice(1)) - Math.min(...counts.slice(1)), JSON.stringify(counts)).toBeLessThan(30);
+    // 150 textures per round trip. Counts also move with when neighbouring
+    // areas are precompiled in idle time, and can drop: only growth fails.)
+    expect(Math.max(...counts.slice(1)) - counts[1], JSON.stringify(counts)).toBeLessThan(30);
     expect(counts[3] - counts[1], JSON.stringify(counts)).toBeLessThan(30);
     expect(errors).toEqual([]);
   });

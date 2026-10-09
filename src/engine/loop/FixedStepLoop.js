@@ -130,27 +130,32 @@ export class FixedStepLoop {
     this.lastTime = timestamp;
     if (frameTime < 0) frameTime = 0;
 
-    let steps = 0;
-    if (!this.paused) {
-      this.accumulator += frameTime * this.timeScale;
-      // A tiny epsilon so 1/60 + 1/60 + 1/60 sums to exactly three steps at 20 Hz.
-      while (this.accumulator >= this.step - 1e-9) {
-        if (steps >= this.maxSteps) {
-          // Spiral-of-death guard: drop whole steps we can't afford, keep the fraction.
-          const owed = Math.floor(this.accumulator / this.step);
-          this.droppedTime += owed * this.step;
-          this.accumulator -= owed * this.step;
-          break;
+    // Ask for the next frame even if this one throws: a bug in one step
+    // reports its error but doesn't freeze the game for good.
+    try {
+      let steps = 0;
+      if (!this.paused) {
+        this.accumulator += frameTime * this.timeScale;
+        // A tiny epsilon so 1/60 + 1/60 + 1/60 sums to exactly three steps at 20 Hz.
+        while (this.accumulator >= this.step - 1e-9) {
+          if (steps >= this.maxSteps) {
+            // Spiral-of-death guard: drop whole steps we can't afford, keep the fraction.
+            const owed = Math.floor(this.accumulator / this.step);
+            this.droppedTime += owed * this.step;
+            this.accumulator -= owed * this.step;
+            break;
+          }
+          this.update(this.step);
+          this.tickCount++;
+          steps++;
+          this.accumulator -= this.step;
         }
-        this.update(this.step);
-        this.tickCount++;
-        steps++;
-        this.accumulator -= this.step;
+        if (this.accumulator < 0) this.accumulator = 0;
       }
-      if (this.accumulator < 0) this.accumulator = 0;
+      this.lastSteps = steps;
+      this.render(this.paused ? 1 : Math.min(1, this.accumulator / this.step), frameTime);
+    } finally {
+      this.frameId = this.requestFrame(this.tick);
     }
-    this.lastSteps = steps;
-    this.render(this.paused ? 1 : Math.min(1, this.accumulator / this.step), frameTime);
-    this.frameId = this.requestFrame(this.tick);
   }
 }

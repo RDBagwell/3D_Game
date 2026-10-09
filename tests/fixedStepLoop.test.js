@@ -158,4 +158,24 @@ describe('frame-rate independence (the real game simulation)', () => {
     // ...and the script really did something (the hero moved and fought).
     expect(Math.hypot(at60[4], at60[6] - 1.5)).toBeGreaterThan(3);
   });
+
+  it('keeps running after a step throws', () => {
+    let frames = 0;
+    let count = 0;
+    const loop = new FixedStepLoop({
+      update: () => {
+        if (++count === 2) throw new Error('boom');
+      },
+      render: () => {},
+      now: () => 0,
+      requestFrame: () => ++frames,
+      cancelFrame: () => {},
+    });
+    loop.start();
+    expect(() => loop.tick(1000 / 60)).not.toThrow();
+    expect(() => loop.tick(2000 / 60)).toThrow('boom');
+    loop.tick(3000 / 60);
+    expect(count).toBe(4); // the next frame retries the failed step, then takes its own
+    expect(frames).toBe(4); // start + one per tick, the throwing one included
+  });
 });
