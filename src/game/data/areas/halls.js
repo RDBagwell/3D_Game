@@ -1,9 +1,9 @@
 /**
  * The Hearth Halls: the dungeon under the hill (docs/STORY.md).
  *
- *   z =   0   The Ash Steps        hearthstone (checkpoint), cindermites        ← from the village
- *   z = -21   The Switch Hall      gate north, crystal switch east, an ash adept
- *   z = -42   The Key Vault        two grunts, the chest with the Hearth Key, the locked door north
+ *   z =   0   The Ash Steps        hearthstone (checkpoint), three cindermites      ← from the village
+ *   z = -21   The Switch Hall      gate north, crystal switch east, an ash adept and two cindermites
+ *   z = -42   The Key Vault        two grunts and an adept, the chest with the Hearth Key, the locked door north
  *   z = -60   The antechamber      hearthstone (checkpoint)
  *   z = -86   The Hearth           the Cinder Warden, and the cold Hearth
  *
@@ -31,7 +31,7 @@ export const halls = {
     { name: 'landing', size: [3, 0.2, 3], at: [0, 0.0, 9], material: 'stone', collide: false },
     // The Switch Hall's dais and the cold Hearth's plinth.
     { name: 'dais', size: [4, 0.3, 4], at: [8, 0.15, -21], material: 'stone' },
-    { name: 'hearth_plinth', size: [6, 0.5, 6], at: [0, 0.25, -96], material: 'stone' },
+    { name: 'hearth_plinth', size: [6, 0.3, 6], at: [0, 0.15, -96], material: 'stone' },
   ],
   rooms: [
     { name: 'steps', at: [0, 0], size: [9, 15], doors: { s: [1], n: [1] } },
@@ -76,10 +76,16 @@ export const halls = {
     ante: { at: [0, 0, -58], yaw: Math.PI },
   },
   enemies: [
-    { type: 'grunt', name: 'steps', at: [0, 0, -4], yaw: 0 },
+    { type: 'mite', name: 'steps_a', at: [-2, 0, -4], yaw: 0 },
+    { type: 'mite', name: 'steps_b', at: [2, 0, -5], yaw: 0 },
+    { type: 'mite', name: 'steps_c', at: [0, 0, -6.5], yaw: 0 },
+    { type: 'adept', name: 'switch', at: [6.5, 0, -25], yaw: 0 },
+    { type: 'mite', name: 'switch_a', at: [-6, 0, -18], yaw: 0 },
+    { type: 'mite', name: 'switch_b', at: [-3, 0, -24], yaw: 0 },
+    { type: 'adept', name: 'vault', at: [4.5, 0, -39], yaw: 0, behind: 'hall_gate' },
     { type: 'grunt', name: 'vault_a', at: [-3, 0, -43], yaw: 0, behind: 'hall_gate' },
     { type: 'grunt', name: 'vault_b', at: [3, 0, -45], yaw: 0, behind: 'hall_gate' },
-    { type: 'grunt', name: 'warden', at: [0, 0, -88], yaw: 0, behind: 'vault_door', unless: { flag: 'warden_defeated' }, defeat: [{ setFlag: 'warden_defeated' }, { giveItem: 'hearth_ember' }, { giveShells: 40 }] },
+    { type: 'warden', name: 'warden', at: [0, 0, -88], yaw: 0, behind: 'vault_door', unless: { flag: 'warden_defeated' }, defeat: [{ setFlag: 'warden_defeated' }, { giveItem: 'hearth_ember' }, { giveShells: 40 }] },
   ],
   objects: [
     { id: 'hearthstone_steps', at: [2.6, 0, 4] },
@@ -88,7 +94,7 @@ export const halls = {
     { id: 'vault_chest', at: [-5, 0, -46.5], yaw: Math.PI / 2, behind: 'hall_gate' },
     { id: 'vault_door', at: [0, 0, -49.5], behind: 'hall_gate' },
     { id: 'hearthstone_ante', at: [2.4, 0, -59.5], behind: 'vault_door' },
-    { id: 'hearth', at: [0, 0.5, -96], behind: 'vault_door' },
+    { id: 'hearth', at: [0, 0.3, -96], behind: 'vault_door' },
   ],
   exits: [{ to: 'village', spawn: 'gate', at: [0, 1.5, 9.5], size: [3, 3, 1.6] }],
   triggers: [

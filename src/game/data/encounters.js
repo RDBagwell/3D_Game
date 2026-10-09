@@ -16,8 +16,8 @@ export const ENCOUNTERS = {
     area: 'village',
     intro: 'Dorran opens the pens. Wave one!',
     waves: [
-      [{ type: 'grunt', at: 'ring_a' }],
-      [{ type: 'grunt', at: 'ring_b' }, { type: 'grunt', at: 'ring_c' }],
+      [{ type: 'mite', at: 'ring_a' }, { type: 'mite', at: 'ring_b' }, { type: 'mite', at: 'ring_c' }],
+      [{ type: 'grunt', at: 'ring_a' }, { type: 'adept', at: 'ring_d' }],
     ],
     win: [{ setFlag: 'trial_won' }],
     outro: 'The ring falls quiet. Dorran is clapping, slowly.',

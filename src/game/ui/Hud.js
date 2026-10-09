@@ -49,6 +49,8 @@ export class Hud {
       <div class="quickslot" hidden><kbd class="quickslot-key"></kbd><span class="quickslot-name">Tonic</span><b class="quickslot-count"></b></div>
       <div class="prompt" hidden><kbd class="prompt-key"></kbd> <span class="prompt-label"></span></div>
       <div class="toasts" aria-live="polite"></div>
+      <div class="saved" hidden>Saved</div>
+      <div class="boss" hidden role="meter" aria-label="Boss health"><div class="boss-name"></div><div class="boss-bar"><div class="boss-fill"></div><i class="boss-mark"></i></div></div>
       <div class="reticle" hidden><i></i><i></i><i></i><i></i><div class="reticle-name"></div><div class="reticle-hp"><div></div></div></div>
       <div class="banner" hidden></div>
       <div class="captions" aria-live="polite"></div>
@@ -74,6 +76,11 @@ export class Hud {
     this.promptKey = /** @type {HTMLElement} */ (this.root.querySelector('.prompt-key'));
     this.promptLabel = /** @type {HTMLElement} */ (this.root.querySelector('.prompt-label'));
     this.toasts = /** @type {HTMLElement} */ (this.root.querySelector('.toasts'));
+    this.saved = /** @type {HTMLElement} */ (this.root.querySelector('.saved'));
+    this.savedTimer = 0;
+    this.boss = /** @type {HTMLElement} */ (this.root.querySelector('.boss'));
+    this.bossName = /** @type {HTMLElement} */ (this.root.querySelector('.boss-name'));
+    this.bossFill = /** @type {HTMLElement} */ (this.root.querySelector('.boss-fill'));
     this.ghostValue = 1;
     this.hintKey = '';
     this.bannerTimer = 0;
@@ -94,6 +101,21 @@ export class Hud {
     this.quick.classList.toggle('empty', info.tonics === 0);
     this.quickKey.textContent = glyph;
     this.quickKey.hidden = !glyph;
+  }
+
+  /**
+   * The boss's health across the top, once it has woken; a notch marks where
+   * its second phase begins.
+   * @param {{ def: { name: string, phaseTwoAt?: number }, hp: number, maxHp: number, brain: { phase?: number } } | null} boss
+   */
+  updateBoss(boss) {
+    this.boss.hidden = !boss;
+    if (!boss) return;
+    this.bossName.textContent = boss.brain.phase === 2 ? `${boss.def.name}: enraged` : boss.def.name;
+    this.bossFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
+    this.boss.style.setProperty('--mark', `${(boss.def.phaseTwoAt ?? 0.5) * 100}%`);
+    this.boss.setAttribute('aria-valuenow', String(Math.ceil(boss.hp)));
+    this.boss.setAttribute('aria-valuemax', String(boss.maxHp));
   }
 
   /**
@@ -201,8 +223,18 @@ export class Hud {
     setTimeout(() => line.remove(), 2200);
   }
 
+  /** A small "Saved" in the corner after an autosave. */
+  flashSaved() {
+    this.saved.hidden = false;
+    this.savedTimer = 1.6;
+  }
+
   /** @param {number} dt */
   tick(dt) {
+    if (this.savedTimer > 0) {
+      this.savedTimer -= dt;
+      if (this.savedTimer <= 0) this.saved.hidden = true;
+    }
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;
       if (this.bannerTimer <= 0) this.banner.hidden = true;

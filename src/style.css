@@ -224,3 +224,23 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .prompt { bottom: 150px; font-size: 14px; }
   .toasts { top: 120px; }
 }
+
+/* ---- The boss's health. ---- */
+.boss { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); width: min(520px, 60vw); text-align: center; }
+.boss-name { font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; font-size: 14px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); margin-bottom: 4px; }
+.boss-bar { position: relative; height: 14px; border-radius: 7px; background: rgba(20, 12, 30, 0.85); border: 2px solid var(--orange); overflow: hidden; }
+.boss-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(180deg, #ffb36b, #e8483f); transition: width 0.12s; }
+.boss-mark { position: absolute; top: 0; bottom: 0; left: var(--mark, 50%); width: 2px; background: var(--cream); opacity: 0.8; }
+@media (max-width: 700px) { .boss { top: 70px; } }
+
+/* ---- Saves, slots, credits. ---- */
+.saved { position: absolute; right: 20px; bottom: 112px; padding: 3px 10px; border-radius: 99px; background: rgba(43, 29, 74, 0.8); border: 1px solid var(--teal); font-size: 13px; }
+.slot-list, .credit-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; text-align: left; }
+.slot-list button.slot { width: 100%; display: grid; gap: 2px; text-align: left; padding: 12px 14px; border-radius: 12px; border: 2px solid var(--ink-3); background: var(--ink-2); }
+.slot-list button.slot span { color: var(--muted); font-size: 14px; }
+.slot-list button.slot.unreadable { border-color: var(--red); }
+.slot-list button.slot:disabled { opacity: 0.55; cursor: not-allowed; }
+.credit-list li { display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; background: var(--ink-2); }
+.credit-list span { color: var(--muted); font-size: 14px; }
+.credit-list a { color: var(--orange-2); font-size: 13px; }
+.menu-credits { max-width: 640px; }

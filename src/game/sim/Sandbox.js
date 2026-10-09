@@ -3,8 +3,10 @@ import { TICK } from '../config.js';
 import { PLAYER, ENEMIES } from '../data/actors.js';
 import { Player } from '../player/Player.js';
 import { Grunt } from '../enemies/Grunt.js';
+import { Enemy } from '../enemies/Enemy.js';
 import { Dummy } from '../enemies/Dummy.js';
-import { resolveSwing, attackPhase, hitSpheresAt } from '../combat/hitboxes.js';
+import { resolveSwing, attackPhase, hitSpheresAt, sphereHitsCapsule } from '../combat/hitboxes.js';
+import { PROJECTILES } from '../data/attacks.js';
 import { selectTarget, switchTarget, shouldBreakLock } from '../combat/lockOn.js';
 import { defaultFeel } from '../feel/feelSettings.js';
 import { buildArea } from '../world/buildArea.js';
@@ -97,8 +99,13 @@ export class Sandbox {
     this.tick = 0;
     /** Updates left in the current hit-stop freeze. */
     this.hitstop = 0;
-    /** @type {string | null} which grunt may attack right now */
-    this.attackToken = null;
+    /** Who holds each group's attack tokens (grunts: one at a time; cindermites: two). @type {Map<string, Set<string>>} */
+    this.tokens = new Map();
+    /** Projectiles in flight. @type {Projectile[]} */
+    this.projectiles = [];
+    this.projectileCount = 0;
+    /** Wind-ups take this much longer, and enemies move a little slower (the "slower enemies" assist). */
+    this.enemySlow = 1;
     this.feel = feel;
     this.respawnPlayer = respawnPlayer;
     this.disposed = false;
@@ -113,7 +120,7 @@ export class Sandbox {
     const body = physics.createCharacter({ position: start.position, radius: PLAYER.radius, height: PLAYER.height });
     this.player = new Player(body, { yaw: start.yaw });
 
-    /** Enemies that fight. @type {Grunt[]} */
+    /** Enemies that fight. @type {Enemy[]} */
     this.foes = [];
     /** @type {Dummy[]} */
     this.dummies = [];
@@ -158,7 +165,7 @@ export class Sandbox {
     /** The exit the player stood in last update (exits fire on the way in). @type {string | null} */
     this.inExit = level.exitAt(start.position) ? 'start' : null;
 
-    /** @type {Grunt | Dummy | null} */
+    /** @type {Enemy | Dummy | null} */
     this.lockTarget = null;
     this.flick = { sum: 0, frames: 0, cooldown: 0 };
     this.respawnTimer = 0;
@@ -180,17 +187,27 @@ export class Sandbox {
    * @param {string} name
    * @param {{ x: number, y: number, z: number }} position
    * @param {number} yaw
-   * @returns {Grunt | null}
+   * @returns {Enemy | null}
    */
   spawnFoe(type, name, position, yaw) {
-    if (type !== 'grunt') return null;
-    const def = ENEMIES.grunt;
+    const def = /** @type {any} */ (ENEMIES)[type];
+    if (!def || type === 'dummy') return null;
     const body = this.physics.createCharacter({ position, radius: def.radius, height: def.height });
-    const foe = new Grunt(`${type}_${name}`, body, position, yaw);
+    const foe = type === 'grunt' ? new Grunt(`grunt_${name}`, body, position, yaw) : new Enemy(`${type}_${name}`, type, body, position, yaw);
     foe.spawnName = name;
+    foe.speedScale = this.enemySlow > 1 ? 0.85 : 1;
     this.foes.push(foe);
     this.emit('spawned', { foe });
     return foe;
+  }
+
+  /**
+   * The "slower enemies" assist: longer wind-ups, slower feet.
+   * @param {boolean} on
+   */
+  setSlowEnemies(on) {
+    this.enemySlow = on ? 1.35 : 1;
+    for (const f of this.foes) f.speedScale = on ? 0.85 : 1;
   }
 
   /**
@@ -221,12 +238,17 @@ export class Sandbox {
     return this.foes.filter((f) => f.kind === 'grunt');
   }
 
+  /** The boss, if it's here and standing. */
+  get boss() {
+    return this.foes.find((f) => f.def.brain === 'warden' && f.alive) ?? null;
+  }
+
   /** Every enemy (foes and dummies). */
   get enemies() {
     return [...this.foes, ...this.dummies];
   }
 
-  /** @returns {(Player | Grunt | Dummy)[]} */
+  /** @returns {(Player | Enemy | Dummy)[]} */
   get actors() {
     return [this.player, ...this.foes, ...this.dummies];
   }
@@ -264,12 +286,13 @@ export class Sandbox {
       canUseItem: this.canUseItem,
     });
 
-    for (const foe of this.foes) this.updateGrunt(foe);
+    for (const foe of this.foes) this.updateFoe(foe);
     for (const dummy of this.dummies) dummy.update(TICK);
     this.updateNpcs();
 
     this.physics.step();
     this.resolveCombat();
+    this.updateProjectiles();
     this.updateCamera(frame);
     this.level.updateTriggers('player', this.player.position, (id) => this.emit('triggerEnter', { id }), (id) => this.emit('triggerExit', { id }));
     this.updateWorld(frame);
@@ -310,6 +333,16 @@ export class Sandbox {
     this.camera.update(TICK, { target: p, lead: { x: 0, z: 0 }, look: { x: 0, y: 0 }, lockTarget: null, recenter: null, shot });
   }
 
+  /**
+   * A framed camera shot with nothing else moving (the ending).
+   * @param {{ pivot: { x: number, y: number, z: number }, yaw: number, pitch: number, distance: number }} shot
+   */
+  frameShot(shot) {
+    this.remember();
+    this.camera.snapshot();
+    this.camera.update(TICK, { target: this.player.position, lead: { x: 0, z: 0 }, look: { x: 0, y: 0 }, lockTarget: null, recenter: null, shot });
+  }
+
   /** @private */
   remember() {
     for (const a of this.actors) {
@@ -348,7 +381,7 @@ export class Sandbox {
         this.setLock(null);
       } else {
         const target = selectTarget(this.enemies, p, axes.forward);
-        if (target) this.setLock(/** @type {Grunt | Dummy} */ (target));
+        if (target) this.setLock(/** @type {Enemy | Dummy} */ (target));
         else this.recenter = this.player.facing;
       }
     }
@@ -359,7 +392,7 @@ export class Sandbox {
       this.flick.sum = this.flick.sum * 0.8 + frame.look.x;
       if (Math.abs(this.flick.sum) > 0.12 && this.flick.cooldown === 0) {
         const next = switchTarget(this.lockTarget, this.enemies, p, axes.right, this.flick.sum > 0 ? 1 : -1);
-        if (next !== this.lockTarget) this.setLock(/** @type {Grunt | Dummy} */ (next));
+        if (next !== this.lockTarget) this.setLock(/** @type {Enemy | Dummy} */ (next));
         this.flick.cooldown = 18;
         this.flick.sum = 0;
       }
@@ -368,7 +401,7 @@ export class Sandbox {
     }
   }
 
-  /** @param {Grunt | Dummy | null} target */
+  /** @param {Enemy | Dummy | null} target */
   setLock(target) {
     const old = this.lockTarget;
     this.lockTarget = target;
@@ -380,15 +413,16 @@ export class Sandbox {
 
   /**
    * @private
-   * @param {Grunt} grunt
+   * @param {Enemy} foe
    */
-  updateGrunt(grunt) {
-    if (!grunt.alive) return;
+  updateFoe(foe) {
+    if (!foe.alive) return;
     const p = this.player.position;
-    const dx = p.x - grunt.position.x;
-    const dz = p.z - grunt.position.z;
-    const before = { x: grunt.position.x, z: grunt.position.z };
-    grunt.update(
+    const dx = p.x - foe.position.x;
+    const dz = p.z - foe.position.z;
+    const before = { x: foe.position.x, z: foe.position.z };
+    const token = foe.def.token ?? { group: foe.kind, max: 1 };
+    foe.update(
       {
         see: {
           distance: Math.hypot(dx, dz),
@@ -397,31 +431,136 @@ export class Sandbox {
           playerSwingId: this.player.swingId,
           playerAttacking: this.player.attackPhase === 'startup',
         },
-        facing: grunt.facing,
+        facing: foe.facing,
         random: () => this.rng.next(),
-        requestToken: (id) => {
-          if (this.attackToken === null || this.attackToken === id) {
-            this.attackToken = id;
-            return true;
+        requestToken: (id) => this.takeToken(token.group, token.max, id),
+        releaseToken: (id) => this.tokens.get(token.group)?.delete(id),
+        emit: (name, data) => this.emit(name, { ...data, grunt: foe, foe }),
+        slow: this.enemySlow,
+        shoot: (projectile, yaw, spread = [0]) => {
+          for (const off of spread) this.shoot(projectile, foe, yaw + off);
+        },
+        summon: (type, marker) => {
+          const at = this.level.markers[marker];
+          if (!at) return;
+          const summoned = this.spawnFoe(type, `${foe.spawnName || foe.id}_${marker}_${this.tick}`, { x: at.x, y: at.y, z: at.z }, 0);
+          if (summoned) {
+            summoned.brain.aware = true;
+            this.emit('summoned', { foe: summoned, by: foe });
           }
-          return false;
         },
-        releaseToken: (id) => {
-          if (this.attackToken === id) this.attackToken = null;
-        },
-        emit: (name, data) => this.emit(name, { ...data, grunt }),
       },
       TICK,
     );
     // Enemy footsteps, so you can hear them coming.
-    const moved = Math.hypot(grunt.position.x - before.x, grunt.position.z - before.z);
-    const s = (this.strides.get(grunt.id) ?? 0) + moved;
-    if (s > 1.4) {
-      this.strides.set(grunt.id, 0);
-      this.emit('footstep', { position: grunt.position, who: grunt, left: false });
+    const moved = Math.hypot(foe.position.x - before.x, foe.position.z - before.z);
+    const s = (this.strides.get(foe.id) ?? 0) + moved;
+    if (s > 1.4 * (foe.height / 1.75)) {
+      this.strides.set(foe.id, 0);
+      this.emit('footstep', { position: foe.position, who: foe, left: false });
     } else {
-      this.strides.set(grunt.id, s);
+      this.strides.set(foe.id, s);
     }
+  }
+
+  /**
+   * @private
+   * @param {string} group
+   * @param {number} max
+   * @param {string} id
+   */
+  takeToken(group, max, id) {
+    let holders = this.tokens.get(group);
+    if (!holders) this.tokens.set(group, (holders = new Set()));
+    if (holders.has(id)) return true;
+    if (holders.size >= max) return false;
+    holders.add(id);
+    return true;
+  }
+
+  /** Which grunt holds the attack token (session 1's single token), or null. */
+  get attackToken() {
+    const holders = this.tokens.get('grunt');
+    return holders && holders.size > 0 ? [...holders][0] : null;
+  }
+
+  // ------------------------------------------------------------------ projectiles
+
+  /**
+   * Throw a projectile from an enemy along a yaw.
+   * @param {string} kind  a key of PROJECTILES
+   * @param {Enemy} owner
+   * @param {number} yaw
+   */
+  shoot(kind, owner, yaw) {
+    const def = PROJECTILES[kind];
+    if (!def) return;
+    const dir = { x: Math.sin(yaw), z: Math.cos(yaw) };
+    const start = { x: owner.position.x + dir.x * (owner.radius + 0.4), y: owner.position.y + def.height, z: owner.position.z + dir.z * (owner.radius + 0.4) };
+    /** @type {Projectile} */
+    const p = { id: `bolt_${++this.projectileCount}`, kind, def, owner, position: start, prev: { ...start }, velocity: { x: dir.x * def.speed, z: dir.z * def.speed }, age: 0, dodged: false };
+    this.projectiles.push(p);
+    this.emit('shoot', { projectile: p });
+  }
+
+  /** @private Move projectiles; they hit the player, a shield, a sword, or a wall. */
+  updateProjectiles() {
+    if (this.projectiles.length === 0) return;
+    const player = this.player;
+    const swordSpheres = player.fsm.is('attack') && player.attack && player.attackFrameNow >= 0 ? hitSpheresAt(player.attack, player.attackFrameNow, player.position, player.facing) : [];
+    for (const p of this.projectiles) {
+      const def = p.def;
+      p.prev.x = p.position.x;
+      p.prev.y = p.position.y;
+      p.prev.z = p.position.z;
+      p.age += TICK;
+      const step = Math.hypot(p.velocity.x, p.velocity.z) * TICK;
+      const dir = { x: p.velocity.x / def.speed, y: 0, z: p.velocity.z / def.speed };
+      const wall = this.physics.rayDistance(p.position, dir, step + def.radius * 0.5);
+      p.position.x += p.velocity.x * TICK;
+      p.position.z += p.velocity.z * TICK;
+      const sphere = { ...p.position, r: def.radius };
+      if (swordSpheres.some((s) => Math.hypot(s.x - sphere.x, s.y - sphere.y, s.z - sphere.z) <= s.r + sphere.r)) {
+        this.endProjectile(p, 'cut');
+        this.hitstop = Math.max(this.hitstop, Math.round(3 * Number(this.feel.hitstopScale)));
+        continue;
+      }
+      if (player.alive && sphereHitsCapsule(player.position, player.radius, player.height, sphere)) {
+        const from = { x: p.position.x - dir.x * 2, z: p.position.z - dir.z * 2 };
+        const knockback = { x: dir.x * def.knockback * Number(this.feel.knockbackScale), z: dir.z * def.knockback * Number(this.feel.knockbackScale) };
+        const base = { attacker: p.owner, target: player, attack: def, point: { ...p.position }, direction: dir, projectile: p };
+        if (player.isInvulnerable()) {
+          if (!p.dodged) this.emit('dodge', base);
+          p.dodged = true;
+        } else if (player.blocks(from)) {
+          player.blockHit({ knockback });
+          this.hitstop = Math.max(this.hitstop, Math.round(2 * Number(this.feel.hitstopScale)));
+          this.emit('block', base);
+          this.endProjectile(p, 'blocked');
+          continue;
+        } else {
+          const counter = player.fsm.is('attack');
+          const damage = Math.max(1, Math.round(def.damage * this.damageTaken));
+          player.takeHit({ damage, knockback, hitstun: def.hitstun, knockdown: counter });
+          this.hitstop = Math.max(this.hitstop, Math.round(def.hitstop * Number(this.feel.hitstopScale)));
+          this.emit('hit', { ...base, damage, killed: !player.alive, counter });
+          this.endProjectile(p, 'hit');
+          continue;
+        }
+      }
+      if ((wall !== null && wall <= step) || p.age >= def.life) this.endProjectile(p, p.age >= def.life ? 'fizzle' : 'wall');
+    }
+    this.projectiles = this.projectiles.filter((p) => !p.ended);
+  }
+
+  /**
+   * @private
+   * @param {Projectile} p
+   * @param {'hit' | 'blocked' | 'cut' | 'wall' | 'fizzle'} reason
+   */
+  endProjectile(p, reason) {
+    p.ended = true;
+    this.emit('projectileEnd', { projectile: p, reason, point: { ...p.position } });
   }
 
   // ------------------------------------------------------------------ people, objects and exits
@@ -503,11 +642,11 @@ export class Sandbox {
       }
     }
     this.strikeObjects();
-    for (const grunt of this.foes) {
-      if (!grunt.alive) continue;
-      const frame = grunt.brain.frameNow;
+    for (const foe of this.foes) {
+      if (!foe.alive || !foe.attack) continue;
+      const frame = foe.brain.frameNow;
       if (frame < 0) continue;
-      for (const r of resolveSwing(grunt, grunt.attack, frame, [player], grunt.swingHits)) this.applyHit(grunt, grunt.attack, r);
+      for (const r of resolveSwing(foe, foe.attack, frame, [player], foe.swingHits)) this.applyHit(foe, foe.attack, r);
     }
   }
 
@@ -528,12 +667,12 @@ export class Sandbox {
   }
 
   /**
-   * @param {Player | Grunt} attacker
+   * @param {Player | Enemy} attacker
    * @param {import('../data/attacks.js').Attack} attack
    * @param {import('../combat/hitboxes.js').HitResult} result
    */
   applyHit(attacker, attack, result) {
-    const target = /** @type {Player | Grunt | Dummy} */ (/** @type {unknown} */ (result.target));
+    const target = /** @type {Player | Enemy | Dummy} */ (/** @type {unknown} */ (result.target));
     let dx = target.position.x - attacker.position.x;
     let dz = target.position.z - attacker.position.z;
     const len = Math.hypot(dx, dz) || 1;
@@ -549,11 +688,13 @@ export class Sandbox {
       const counter = target instanceof Player && target.fsm.is('attack');
       let damage = attack.damage;
       if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
+      if (target instanceof Enemy) damage = Math.max(1, Math.round(damage * target.brain.damageTaken));
       if (target instanceof Player) damage = Math.max(1, Math.round(damage * this.damageTaken));
       target.takeHit({ damage, poise: attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
       this.hitstop = Math.max(this.hitstop, Math.round(attack.hitstop * Number(this.feel.hitstopScale)));
-      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter });
-      if (wasAlive && !target.alive && target instanceof Grunt) {
+      const weak = target instanceof Enemy && target.brain.damageTaken > 1;
+      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter, weak });
+      if (wasAlive && !target.alive && target instanceof Enemy) {
         target.body.setSolid?.(false);
         if (this.lockTarget === target) this.setLock(null);
       }
@@ -612,7 +753,7 @@ export class Sandbox {
     // until the area is entered again.
     if (!this.area.respawnEnemies) return;
     for (const grunt of this.foes) {
-      if (grunt.alive) continue;
+      if (grunt.alive || grunt.def.respawnSeconds <= 0) continue;
       grunt.respawnTimer -= TICK;
       if (grunt.respawnTimer <= 0) {
         grunt.respawn((pos) => grunt.body.teleport?.(pos));
@@ -633,9 +774,9 @@ export class Sandbox {
   }
 
   /** Whether an attack is in its active frames (for drawing hitboxes). */
-  static isActive(/** @type {Player | Grunt} */ actor) {
+  static isActive(/** @type {Player | Enemy} */ actor) {
     if (actor instanceof Player) return actor.fsm.is('attack') && actor.attack !== null && attackPhase(actor.attack, actor.attackFrameNow) === 'active';
-    return actor.alive && actor.brain.frameNow >= 0 && attackPhase(actor.attack, actor.brain.frameNow) === 'active';
+    return actor.alive && Boolean(actor.attack) && actor.brain.frameNow >= 0 && attackPhase(actor.attack, actor.brain.frameNow) === 'active';
   }
 
   /** Free the physics world (safe to call twice). */
@@ -673,6 +814,20 @@ export class Sandbox {
  */
 
 /** @typedef {{ kind: 'npc' | 'object', id: string, label: string }} Focus */
+
+/**
+ * @typedef {object} Projectile
+ * @property {string} id
+ * @property {string} kind
+ * @property {import('../data/attacks.js').ProjectileDef} def
+ * @property {Enemy} owner
+ * @property {{ x: number, y: number, z: number }} position
+ * @property {{ x: number, y: number, z: number }} prev
+ * @property {{ x: number, z: number }} velocity
+ * @property {number} age  seconds
+ * @property {boolean} dodged  already rolled through once
+ * @property {boolean} [ended]
+ */
 
 /** @param {number} yaw */
 function yawQuat(yaw) {

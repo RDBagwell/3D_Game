@@ -112,6 +112,24 @@ runs.
 | UI font | The system font (`system-ui`) | The player's operating system | Not shipped | keep |
 | `public/music/*.ogg` | Not there yet: Robert's original music goes here (see [docs/ASSETS-TODO.md](docs/ASSETS-TODO.md)) | Robert Bagwell | Project's own | to do |
 
+## Credits
+
+The game's credits screen is generated from this table
+(`src/game/content/credits.js`), and `tests/credits.test.js` checks that
+every pack listed above appears here, so the two can't drift apart.
+
+| Work | By | Licence | Link |
+| --- | --- | --- | --- |
+| KayKit Character Pack: Adventurers 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Character Pack: Skeletons 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Prototype Bits 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Dungeon Remastered 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Medieval Hexagon Pack 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| Game, code, sound effects, levels and story | Robert Bagwell, with Claude (Anthropic) | Project's own | [github.com/RDBagwell](https://github.com/RDBagwell) |
+| Dialogue system, save system and content format | Ported from Island RPG by Robert Bagwell | Project's own | [RDBagwell/rpg](https://github.com/RDBagwell/rpg) |
+| Music | Robert Bagwell (tracks go in `public/music/`, see docs/AUDIO.md) | Project's own | |
+| Engines | three.js authors (MIT), Rapier by Dimforge (Apache 2.0) | Open source | [threejs.org](https://threejs.org), [rapier.rs](https://rapier.rs) |
+
 ## Robert's own work (`art/blender/`)
 
 The 2024 prototype's Blender scenes and their glTF exports. They were in

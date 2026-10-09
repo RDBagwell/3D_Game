@@ -24,6 +24,8 @@ export class GameState {
     /** Quest id -> index of the stage last announced (-1: not started). @type {Record<string, number>} */
     this.questStages = {};
     this.playTime = 0;
+    /** Where you stood when you chose Save and quit (else you resume at `spawn`). @type {{ x: number, y: number, z: number, yaw: number } | null} */
+    this.position = null;
   }
 
   /** A fresh playthrough: the crate you're delivering, a tonic and a few shells. */
@@ -31,6 +33,38 @@ export class GameState {
     const state = new GameState();
     for (const [id, count] of Object.entries(START_ITEMS)) state.addItem(id, count);
     state.shells = START_SHELLS;
+    return state;
+  }
+
+  /** What a save slot holds (src/game/saves.js documents the format). */
+  toSaveData() {
+    return {
+      area: this.area,
+      spawn: this.spawn,
+      checkpoint: { ...this.checkpoint },
+      flags: [...this.flags].sort(),
+      items: Object.fromEntries([...this.items].filter(([, n]) => n > 0)),
+      shells: this.shells,
+      questStages: { ...this.questStages },
+      playTime: Math.round(this.playTime * 10) / 10,
+      ...(this.position ? { position: { ...this.position } } : {}),
+    };
+  }
+
+  /**
+   * @param {ReturnType<GameState['toSaveData']>} data  already validated (saves.js)
+   */
+  static fromSaveData(data) {
+    const state = new GameState();
+    state.area = data.area;
+    state.spawn = data.spawn;
+    state.checkpoint = { ...data.checkpoint };
+    state.flags = new Set(data.flags);
+    state.items = new Map(Object.entries(data.items));
+    state.shells = data.shells;
+    state.questStages = { ...data.questStages };
+    state.playTime = data.playTime;
+    state.position = /** @type {any} */ (data).position ?? null;
     return state;
   }
 

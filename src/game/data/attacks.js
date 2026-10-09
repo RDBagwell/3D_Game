@@ -134,6 +134,83 @@ export const ATTACKS = {
     chainFrom: 999,
     rollCancelFrom: 999,
   },
+
+  // A cindermite's lunge: weak, quick, with a short but visible wind-up.
+  miteBite: {
+    name: 'Bite',
+    anim: 'Unarmed_Melee_Attack_Punch_A',
+    startup: 20,
+    active: 4,
+    recovery: 26,
+    damage: 7,
+    poise: 0,
+    knockback: 2.5,
+    hitstun: 14,
+    hitstop: 3,
+    shake: 0.2,
+    lunge: 4.2,
+    hitbox: { reach: 0.85, radius: 0.45, height: 0.6, arcFrom: -15, arcTo: 15 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+
+  // The Cinder Warden. Every attack has a long, loud wind-up; the slam leaves
+  // its axe stuck in the floor (the opening).
+  wardenSweep: {
+    name: 'Sweep',
+    anim: '2H_Melee_Attack_Spin',
+    startup: 34,
+    active: 9,
+    recovery: 34,
+    damage: 22,
+    poise: 0,
+    knockback: 7.5,
+    hitstun: 26,
+    hitstop: 7,
+    shake: 0.55,
+    lunge: 1.2,
+    hitbox: { reach: 2.5, radius: 0.85, height: 1.0, arcFrom: -100, arcTo: 100 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+  wardenSlam: {
+    name: 'Slam',
+    anim: '2H_Melee_Attack_Chop',
+    startup: 48,
+    active: 5,
+    recovery: 125,
+    damage: 32,
+    poise: 0,
+    knockback: 9,
+    hitstun: 30,
+    hitstop: 10,
+    knockdown: true,
+    shake: 0.8,
+    lunge: 2.2,
+    hitbox: { reach: 2.3, radius: 1.05, height: 0.7, arcFrom: -6, arcTo: 6 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+};
+
+/**
+ * Projectiles: thrown by ash adepts and the Warden. They fly straight at
+ * `speed`, so a roll through them (i-frames), a raised shield (from the
+ * front) or a sword swing (cuts them out of the air) all work.
+ *
+ *   speed    m/s       radius  m       life  seconds before it fizzles
+ *   damage, knockback, hitstun, hitstop, shake: as for attacks
+ */
+
+/** @typedef {{ name: string, speed: number, radius: number, life: number, damage: number, knockback: number, hitstun: number, hitstop: number, shake: number, height: number }} ProjectileDef */
+
+/** @type {Record<string, ProjectileDef>} */
+export const PROJECTILES = {
+  cinderBolt: { name: 'Cinder bolt', speed: 8.5, radius: 0.32, life: 2.6, damage: 12, knockback: 4.5, hitstun: 18, hitstop: 4, shake: 0.25, height: 1.15 },
+  ember: { name: 'Ember', speed: 9.5, radius: 0.36, life: 2.4, damage: 14, knockback: 5, hitstun: 20, hitstop: 4, shake: 0.3, height: 1.1 },
 };
 
 /** The player's combo, in order. */

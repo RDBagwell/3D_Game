@@ -108,6 +108,33 @@ export class Adventure {
     return sandbox;
   }
 
+  /**
+   * Pick up a loaded game: its area, and where you stood if you saved there.
+   */
+  async resume() {
+    const s = this.state;
+    const sb = await this.enter(s.area, s.spawn);
+    if (s.position) {
+      sb.player.body.teleport?.({ x: s.position.x, y: s.position.y, z: s.position.z });
+      sb.player.facing = s.position.yaw;
+      sb.camera.reset(sb.player.position, s.position.yaw);
+      sb.inExit = sb.level.exitAt(sb.player.position) ? 'start' : null;
+      s.position = null;
+    }
+    return sb;
+  }
+
+  /**
+   * What to save: the state, and with `here`, exactly where the player stands.
+   * @param {boolean} [here]
+   */
+  saveData(here = false) {
+    const data = this.state.toSaveData();
+    const p = this.sandbox?.player;
+    if (here && p?.alive) return { ...data, position: { x: p.position.x, y: p.position.y, z: p.position.z, yaw: p.facing } };
+    return data;
+  }
+
   /** Back to the last checkpoint after falling, at full health, with everything you had. */
   respawn() {
     const c = this.state.checkpoint;
@@ -299,6 +326,8 @@ export class Adventure {
       const c = this.state.checkpoint;
       const fresh = c.area !== this.state.area || c.spawn !== def.checkpoint;
       this.state.checkpoint = { area: this.state.area, spawn: def.checkpoint };
+      // A reload starts here too.
+      this.state.spawn = def.checkpoint;
       sb.player.hp = sb.player.maxHp;
       this.events.emit('checkpoint', { id: e.id, fresh });
     });

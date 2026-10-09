@@ -28,7 +28,7 @@ export class CharacterView {
   /**
    * @param {import('./models.js').CharacterModel} model
    * @param {any} actor  Player, Grunt or Dummy
-   * @param {'player' | 'grunt' | 'dummy' | 'npc'} kind
+   * @param {'player' | 'foe' | 'dummy' | 'npc'} kind
    */
   constructor(model, actor, kind) {
     this.model = model;
@@ -46,7 +46,7 @@ export class CharacterView {
     this.telegraphOn = true;
     this.crossFade = 0.12;
 
-    if (kind === 'grunt') {
+    if (kind === 'foe') {
       this.ring = new Mesh(
         new RingGeometry(0.86, 1, 40),
         new MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity: 0.85, side: DoubleSide, depthWrite: false }),
@@ -56,7 +56,8 @@ export class CharacterView {
       this.ring.visible = false;
       this.root.add(this.ring);
       this.warning = new Sprite(new SpriteMaterial({ map: warningTexture(), depthTest: false, transparent: true }));
-      this.warning.position.y = 2.35;
+      this.warning.position.y = actor.height + 0.6;
+      if (actor.def?.brain === 'warden') this.warning.scale.setScalar(1.6);
       this.warning.visible = false;
       this.warning.renderOrder = 10;
       this.root.add(this.warning);
@@ -86,7 +87,7 @@ export class CharacterView {
     }
 
     if (this.kind === 'player') this.animatePlayer();
-    else if (this.kind === 'grunt') this.animateGrunt();
+    else if (this.kind === 'foe') this.animateFoe();
     else if (this.kind === 'npc') this.setClip('idle', 'Idle');
     else this.animateDummy(dt);
 
@@ -164,13 +165,15 @@ export class CharacterView {
     }
   }
 
-  animateGrunt() {
+  /** Any enemy: its brain's state picks the clip; wind-ups show the telegraph. */
+  animateFoe() {
     const g = this.actor;
     const brain = g.brain;
     const state = brain.state;
+    const def = g.def;
     const entry = brain.fsm.history[brain.fsm.history.length - 1]?.tick ?? 0;
-    const def = ENEMIES.grunt;
     const atk = g.attack;
+    const boss = def.brain === 'warden';
     const glow = (/** @type {number} */ k) => {
       for (const mesh of this.model.weapon) {
         const m = /** @type {any} */ (mesh.material);
@@ -178,41 +181,66 @@ export class CharacterView {
       }
     };
 
-    // Telegraph.
-    const winding = state === 'windup' && this.telegraphOn;
+    // Telegraph: a ring that closes on the enemy as the wind-up runs out, a
+    // warning sign, a glowing weapon. The ring shows the attack's reach.
+    const winding = brain.telegraph && this.telegraphOn && g.alive;
     if (this.ring && this.warning) {
       this.ring.visible = winding;
       this.warning.visible = winding;
       if (winding) {
-        const t = Math.min(1, brain.fsm.frames / atk.startup);
-        const s = 2.4 - 1.7 * t;
+        const t = brain.windupProgress ?? 0;
+        const reach = atk && state === 'windup' ? atk.hitbox.reach + atk.hitbox.radius : g.radius + 0.6;
+        const s = reach * (1.6 - 0.9 * t);
         this.ring.scale.set(s, s, s);
         /** @type {MeshBasicMaterial} */ (this.ring.material).opacity = 0.5 + 0.45 * t;
-        const w = 0.45 + 0.35 * t;
+        const w = (boss ? 0.8 : 0.45) + 0.35 * t;
         this.warning.scale.set(w, w, w);
       }
     }
-    glow(winding ? 0.4 + 0.6 * Math.abs(Math.sin(brain.fsm.frames * 0.35)) : 0);
+    if (def.brain !== 'warden' || !this.flashed) glow(winding ? 0.4 + 0.6 * Math.abs(Math.sin(brain.fsm.frames * 0.35)) : 0);
+    if (this.model.core) {
+      const m = /** @type {any} */ (this.model.core.material);
+      const open = state === 'stuck';
+      m.emissiveIntensity = open ? 3 + Math.sin(brain.fsm.frames * 0.4) * 1.2 : state === 'roar' ? 2 : 0.4;
+      this.model.core.scale.setScalar(open ? 1.6 : 1);
+    }
 
     switch (state) {
       case 'windup':
       case 'attack':
-      case 'recover': {
+      case 'recover':
+      case 'stuck': {
+        if (!atk) {
+          this.setClip(`rec:${entry}`, 'Idle');
+          break;
+        }
         // One clip across wind-up, strike and recovery, stretched so the
-        // strike in the animation lands on the first active frame.
+        // strike in the animation lands on the first active frame. A stuck
+        // axe holds the clip's last pose.
         const IMPACT = 0.42;
         const key = `atk:${state === 'windup' ? entry : this.lastKey}`;
-        if (state === 'windup') this.setClip(key, atk.anim, { loop: false, duration: atk.startup / 60 / IMPACT, fade: 0.15 });
+        if (state === 'windup') this.setClip(key, atk.anim, { loop: false, duration: (atk.startup * (brain.ctx?.slow ?? 1)) / 60 / IMPACT, fade: 0.15 });
         break;
       }
-      case 'chase':
-        this.setClip('chase', 'Running_A', { speed: 0.9 });
+      case 'cast':
+        this.setClip(`cast:${entry}`, boss ? 'Spellcast_Raise' : 'Spellcast_Shoot', { loop: false, duration: ((def.castFrames ?? 42) / 60) * 1.25, fade: 0.12 });
         break;
-      case 'approach':
-        this.setClip('approach', 'Running_A', { speed: 0.75 });
+      case 'roar':
+        this.setClip(`roar:${entry}`, 'Taunt', { loop: false, duration: def.roarFrames / 60 });
+        break;
+      case 'chase':
+      case 'approach': {
+        const moving = brain.intent.move !== 'none';
+        this.setClip(`run:${moving}`, moving ? 'Running_A' : 'Idle_Combat', { speed: boss ? 0.65 : state === 'chase' ? 0.9 : 0.75 });
+        break;
+      }
+      case 'flee':
+        this.setClip('flee', 'Walking_Backwards', { speed: 1.4 });
         break;
       case 'circle':
-        this.setClip(`circle:${brain.circleDir}`, brain.circleDir > 0 ? 'Running_Strafe_Left' : 'Running_Strafe_Right', { speed: 0.6 });
+      case 'keep':
+        if (brain.intent.move === 'away') this.setClip('back', 'Walking_Backwards');
+        else this.setClip(`circle:${brain.circleDir}`, brain.circleDir > 0 ? 'Running_Strafe_Left' : 'Running_Strafe_Right', { speed: 0.6 });
         break;
       case 'block':
         this.setClip('block', 'Blocking');
@@ -224,7 +252,7 @@ export class CharacterView {
         this.setClip(`stagger:${entry}`, 'Hit_B', { loop: false, duration: def.staggerFrames / 60 });
         break;
       case 'dead':
-        this.setClip(`dead:${entry}`, 'Death_A', { loop: false, duration: 1.1 });
+        this.setClip(`dead:${entry}`, 'Death_A', { loop: false, duration: boss ? 2.2 : 1.1 });
         break;
       default:
         this.setClip('idle', 'Idle');

@@ -26,6 +26,13 @@ import { settings, updateSettings, keysFor, keyLabel, rebindKey } from '../setti
  * @property {() => InventoryView | null} [inventory]
  * @property {(shopId: string, itemId: string) => { message: string, view: ShopView }} [buy]  buy one
  * @property {() => void} [closeShop]
+ * @property {() => import('../saves.js').SlotSummary[]} [slots]
+ * @property {(slot: string) => void} [newGame]
+ * @property {(slot: string) => void} [loadGame]
+ * @property {() => void} [continueGame]
+ * @property {() => void} [saveAndQuit]
+ * @property {() => import('../content/credits.js').Credit[]} [credits]
+ * @property {() => void} [keepPlaying]
  */
 
 /** @typedef {{ name: string, text: string, done: boolean, main: boolean }} QuestEntry */
@@ -63,16 +70,111 @@ export class Menus {
 
   showTitle() {
     this.closeAll();
+    const slots = this.actions.slots?.() ?? [];
+    const any = slots.some((x) => x.status === 'ok');
     this.push(this.screen('title', `
       <h1 class="logo">Ember<span>wake</span></h1>
       <p class="tagline">A short adventure on Cinder Isle, with a built-in game-feel lab</p>
       <nav>
-        <button data-do="play" class="primary">Play</button>
+        ${any ? '<button data-do="continue" class="primary">Continue</button>' : ''}
+        <button data-do="new" class="${any ? '' : 'primary'}">New game</button>
+        ${any ? '<button data-do="load">Load game</button>' : ''}
         <button data-do="lab">Game-feel lab</button>
         <button data-do="controls">Controls</button>
         <button data-do="settings">Settings</button>
+        <button data-do="credits">Credits</button>
       </nav>
-      <p class="credits">Characters and props: KayKit by Kay Lousberg (CC0). Code, sounds and level: made for this project.</p>`));
+      <p class="credits">Characters, village and dungeon: KayKit by Kay Lousberg (CC0). Code, sounds, levels and story: made for this project.</p>`));
+  }
+
+  /**
+   * The save slots, to start a new game in or to load.
+   * @param {'new' | 'load'} mode
+   */
+  slotsScreen(mode) {
+    const slots = this.actions.slots?.() ?? [];
+    const el = this.screen('slots', `
+      <h2>${mode === 'new' ? 'New game: choose a slot' : 'Load game'}</h2>
+      <ul class="slot-list"></ul>
+      <nav><button data-do="back">Back</button></nav>`);
+    const list = /** @type {HTMLElement} */ (el.querySelector('.slot-list'));
+    for (const slot of slots) {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.className = `slot ${slot.status}`;
+      const title = document.createElement('b');
+      title.textContent = slot.label;
+      const info = document.createElement('span');
+      if (slot.status === 'ok') {
+        const when = slot.savedAt ? new Date(slot.savedAt).toLocaleString() : '';
+        info.textContent = `${slot.place} · ${slot.progress} · ${formatTime(slot.playTime ?? 0)}${when ? ` · ${when}` : ''}`;
+      } else if (slot.status === 'empty') {
+        info.textContent = 'Empty';
+      } else {
+        info.textContent = `Damaged save: ${slot.problem ?? 'it could not be read'}. ${mode === 'new' ? 'Starting here replaces it (a copy is kept).' : "It can't be loaded; start a new game in this slot."}`;
+      }
+      b.append(title, info);
+      b.disabled = mode === 'load' && slot.status !== 'ok';
+      b.addEventListener('click', () => {
+        if (mode === 'load') return this.actions.loadGame?.(slot.slot);
+        if (slot.status === 'ok') this.push(this.confirmScreen(`Start a new game in ${slot.label}? The save there will be replaced.`, () => this.actions.newGame?.(slot.slot)));
+        else this.actions.newGame?.(slot.slot);
+      });
+      li.append(b);
+      list.append(li);
+    }
+    return el;
+  }
+
+  /**
+   * @param {string} question
+   * @param {() => void} yes
+   */
+  confirmScreen(question, yes) {
+    const el = this.screen('confirm', `
+      <h2>Are you sure?</h2>
+      <p class="note"></p>
+      <nav><button data-do="back" class="primary">No</button><button data-yes>Yes</button></nav>`);
+    /** @type {HTMLElement} */ (el.querySelector('.note')).textContent = question;
+    /** @type {HTMLElement} */ (el.querySelector('[data-yes]')).addEventListener('click', yes);
+    return el;
+  }
+
+  /**
+   * The credits, from ASSETS.md. After the ending, with Keep playing.
+   * @param {boolean} [ending]
+   */
+  creditsScreen(ending = false) {
+    const credits = this.actions.credits?.() ?? [];
+    const el = this.screen('credits', `
+      <h2>${ending ? 'Thank you for playing Emberwake' : 'Credits'}</h2>
+      <ul class="credit-list"></ul>
+      <nav>${ending ? '<button data-do="keep-playing" class="primary">Keep playing</button><button data-do="quit">Title screen</button>' : '<button data-do="back" class="primary">Back</button>'}</nav>`);
+    const list = /** @type {HTMLElement} */ (el.querySelector('.credit-list'));
+    for (const c of credits) {
+      const li = document.createElement('li');
+      const w = document.createElement('b');
+      w.textContent = c.work;
+      const by = document.createElement('span');
+      by.textContent = `${c.by}${c.licence ? ` · ${c.licence}` : ''}`;
+      li.append(w, by);
+      for (const link of c.links) {
+        const a = document.createElement('a');
+        a.href = link.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = link.text;
+        li.append(a);
+      }
+      list.append(li);
+    }
+    return el;
+  }
+
+  /** The end of the story: the credits over the lit Hearth. */
+  showEnding() {
+    this.closeAll();
+    this.push(this.creditsScreen(true));
   }
 
   showPause() {
@@ -86,7 +188,7 @@ export class Menus {
         <button data-do="settings">Settings</button>
         <button data-do="lab">Game-feel lab</button>
         <button data-do="controls">Controls</button>
-        <button data-do="quit">Quit to title</button>
+        ${adventure ? '<button data-do="save-quit">Save and quit</button>' : '<button data-do="quit">Quit to title</button>'}
       </nav>`));
   }
 
@@ -260,6 +362,29 @@ export class Menus {
         this.closeAll();
         this.actions.closeShop?.();
         break;
+      case 'continue':
+        this.actions.continueGame?.();
+        break;
+      case 'new': {
+        // No saves at all: straight into slot 1.
+        const slots = this.actions.slots?.() ?? [];
+        if (slots.every((x) => x.status === 'empty')) this.actions.newGame?.(slots[0]?.slot ?? 'slot1');
+        else this.push(this.slotsScreen('new'));
+        break;
+      }
+      case 'load':
+        this.push(this.slotsScreen('load'));
+        break;
+      case 'credits':
+        this.push(this.creditsScreen());
+        break;
+      case 'save-quit':
+        this.actions.saveAndQuit?.();
+        break;
+      case 'keep-playing':
+        this.closeAll();
+        this.actions.keepPlaying?.();
+        break;
       case 'settings':
         this.push(this.settingsScreen());
         break;
@@ -432,6 +557,18 @@ export class Menus {
     const first = /** @type {HTMLElement | null} */ (screen.querySelector('button.primary, button, input'));
     first?.focus({ preventScroll: true });
   }
+}
+
+/**
+ * "1:05:09" or "5:09".
+ * @param {number} seconds
+ */
+function formatTime(seconds) {
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = String(total % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
 }
 
 /** Standard-mapping button names (Xbox / PlayStation) for the controls table. */

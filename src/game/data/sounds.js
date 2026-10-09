@@ -112,7 +112,7 @@ export const SOUNDS = {
     },
   },
   noticed: {
-    caption: '[Grunt spots you]',
+    caption: '[An enemy spots you]',
     volume: 0.6,
     recipe: (ctx, out, t) => {
       tone(ctx, out, t, { type: 'square', from: 220, to: 260, duration: 0.12, volume: 0.12 });
@@ -217,6 +217,79 @@ export const SOUNDS = {
     recipe: (ctx, out, t) => {
       noise(ctx, out, t, { duration: 1.1, filter: 'lowpass', from: 300, to: 150, volume: 0.7, attack: 0.1 });
       tone(ctx, out, t, { type: 'sawtooth', from: 55, to: 45, duration: 1.1, volume: 0.12 });
+    },
+  },
+  // ---- Cindermites, ash adepts and the Cinder Warden.
+  mite_noticed: {
+    caption: '[Cindermites chitter]',
+    volume: 0.5,
+    recipe: (ctx, out, t, rng) => {
+      for (let i = 0; i < 3; i++) tone(ctx, out, t + i * 0.05, { type: 'square', from: 900 + rng() * 300, to: 700, duration: 0.04, volume: 0.08 });
+    },
+  },
+  mite_windup: {
+    caption: '[A cindermite hisses]',
+    volume: 0.5,
+    recipe: (ctx, out, t) => {
+      noise(ctx, out, t, { duration: 0.3, filter: 'highpass', from: 3000, to: 5000, volume: 0.35, attack: 0.08 });
+    },
+  },
+  cast_windup: {
+    caption: '[An adept gathers cinders]',
+    volume: 0.6,
+    recipe: (ctx, out, t) => {
+      noise(ctx, out, t, { duration: 0.7, filter: 'bandpass', from: 300, to: 2400, q: 4, volume: 0.4, attack: 0.5 });
+      tone(ctx, out, t, { type: 'sine', from: 180, to: 520, duration: 0.7, volume: 0.15, attack: 0.5 });
+    },
+  },
+  cast: {
+    volume: 0.55,
+    recipe: (ctx, out, t, rng) => {
+      noise(ctx, out, t, { duration: 0.35, filter: 'bandpass', from: 2000 + rng() * 400, to: 500, q: 1.5, volume: 0.55 });
+    },
+  },
+  fizzle: {
+    volume: 0.4,
+    recipe: (ctx, out, t) => noise(ctx, out, t, { duration: 0.25, filter: 'highpass', from: 4000, to: 2000, volume: 0.35 }),
+  },
+  deflect: {
+    volume: 0.7,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'triangle', from: 1500, to: 1100, duration: 0.15, volume: 0.35 });
+      noise(ctx, out, t, { duration: 0.12, filter: 'highpass', from: 2500, to: 1500, volume: 0.5 });
+    },
+  },
+  boss_awake: {
+    caption: '[The Cinder Warden wakes]',
+    volume: 0.9,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'sawtooth', from: 70, to: 45, duration: 1.2, volume: 0.25, attack: 0.3 });
+      noise(ctx, out, t, { duration: 1.2, filter: 'lowpass', from: 500, to: 120, volume: 0.6, attack: 0.3 });
+    },
+  },
+  boss_windup: {
+    caption: '[The Warden raises its axe]',
+    volume: 0.85,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'sawtooth', from: 60, to: 140, duration: 0.6, volume: 0.22, attack: 0.3 });
+      noise(ctx, out, t, { duration: 0.6, filter: 'bandpass', from: 200, to: 900, q: 2, volume: 0.5, attack: 0.3 });
+    },
+  },
+  roar: {
+    caption: '[The Warden roars, and the floor cracks]',
+    volume: 1,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'sawtooth', from: 90, to: 50, duration: 1.4, volume: 0.35, attack: 0.1 });
+      tone(ctx, out, t, { type: 'square', from: 135, to: 70, duration: 1.4, volume: 0.12, attack: 0.1 });
+      noise(ctx, out, t, { duration: 1.4, filter: 'lowpass', from: 1200, to: 200, volume: 0.8, attack: 0.1 });
+    },
+  },
+  opening: {
+    caption: '[Its axe is stuck: strike the glowing core]',
+    volume: 0.7,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'triangle', from: 440, duration: 0.12, volume: 0.25 });
+      tone(ctx, out, t + 0.12, { type: 'triangle', from: 660, duration: 0.2, volume: 0.25 });
     },
   },
 };

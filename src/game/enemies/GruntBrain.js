@@ -3,7 +3,8 @@ import { ATTACKS } from '../data/attacks.js';
 import { ENEMIES } from '../data/actors.js';
 
 /**
- * The grunt's decisions, as a state machine that only thinks. It is given
+ * The decisions of a melee enemy (grunts and cindermites, with different
+ * numbers from data/actors.js), as a state machine that only thinks. It is given
  * what the grunt perceives each update and sets `intent` (how to move and
  * where to face); the Grunt entity carries that out and owns the body. Kept
  * apart so the AI can be tested with made-up perceptions and no physics.
@@ -57,6 +58,9 @@ export const GRUNT_TRANSITIONS = {
  * @property {(id: string) => boolean} requestToken
  * @property {(id: string) => void} releaseToken
  * @property {(name: string, data?: any) => void} emit
+ * @property {number} [slow]  1 normally; above 1 stretches wind-ups (the "slower enemies" assist)
+ * @property {(projectile: string, yaw: number, spread?: number[]) => void} [shoot]  throw projectiles (casters, the boss)
+ * @property {(type: string, marker: string) => void} [summon]  call an enemy to a marker (the boss)
  */
 
 /**
@@ -68,10 +72,23 @@ export const GRUNT_TRANSITIONS = {
  */
 
 export class GruntBrain {
-  /** @param {string} id */
-  constructor(id) {
+  /**
+   * @param {string} id
+   * @param {any} [def]  the enemy's numbers (ENEMIES.grunt, ENEMIES.mite...)
+   */
+  constructor(id, def = ENEMIES.grunt) {
     this.id = id;
-    this.def = ENEMIES.grunt;
+    this.def = def;
+    /** Damage multiplier for hits it takes (bosses use this for weak points). */
+    this.damageTaken = 1;
+    /** Can't be hurt right now (a boss's roar). */
+    this.invulnerable = false;
+    /** Showing a wind-up the player should react to (the view draws the telegraph). */
+    this.telegraph = false;
+    /** 0..1 through the current wind-up (the telegraph ring closes as it goes). */
+    this.windupProgress = 0;
+    /** Set when a new swing starts (the body clears what it has already hit). */
+    this.newSwing = false;
     this.attack = ATTACKS[this.def.attack];
     this.aware = false;
     this.cooldown = 30;
@@ -100,6 +117,7 @@ export class GruntBrain {
   update(ctx) {
     this.ctx = ctx;
     this.frameNow = -1;
+    this.telegraph = this.fsm.is('windup');
     if (this.cooldown > 0) this.cooldown--;
     const see = ctx.see;
     // Noticing and forgetting the player.
@@ -178,13 +196,19 @@ export class GruntBrain {
         },
       },
       windup: {
-        enter: () => ctx().emit('windup', { id: this.id, attack: this.attack }),
+        enter: () => {
+          this.windupProgress = 0;
+          ctx().emit('windup', { id: this.id, attack: this.attack });
+        },
         update: () => {
-          this.frameNow = this.fsm.frames;
-          const committed = this.fsm.frames >= this.attack.startup - this.def.commitFrames;
+          // The "slower enemies" assist stretches the wind-up; frame data stays as written.
+          const f = this.fsm.frames / (ctx().slow ?? 1);
+          this.frameNow = Math.floor(f);
+          this.windupProgress = Math.min(1, f / this.attack.startup);
+          const committed = f >= this.attack.startup - this.def.commitFrames;
           if (committed) stop();
           else set('none', 0, this.def.windupTurn);
-          if (this.fsm.frames >= this.attack.startup - 1) this.fsm.go('attack');
+          if (f >= this.attack.startup - 1) this.fsm.go('attack');
         },
       },
       attack: {
@@ -256,8 +280,9 @@ export class GruntBrain {
   /**
    * React to a hit that landed.
    * @param {boolean} poiseBroken
+   * @param {number} [_hpFraction]  (bosses use it to change phase)
    */
-  onHit(poiseBroken) {
+  onHit(poiseBroken, _hpFraction) {
     this.aware = true;
     this.fsm.go(poiseBroken ? 'stagger' : 'hitstun');
   }

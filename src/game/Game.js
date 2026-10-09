@@ -25,6 +25,11 @@ import { ITEMS } from './data/items.js';
 import { QUESTS } from './data/quests.js';
 import { SHOPS } from './data/shops.js';
 import { conditionContext, evaluateCondition } from './adventure/conditions.js';
+import { createSaves, slotSummaries, mostRecentSlot, loadGame } from './saves.js';
+import { parseCredits } from './content/credits.js';
+import { DIALOGUES } from './data/dialogues/index.js';
+import { DialogueRunner } from './dialogue/DialogueRunner.js';
+import assetsMarkdown from '../../ASSETS.md?raw';
 
 /**
  * Boots the game and runs it: loading screen, title, play, pause, the lab.
@@ -70,7 +75,7 @@ export class Game {
     this.audio.register(SOUNDS);
     this.audio.autoUnlock(window);
     this.music = new MusicManager(this.audio, { baseUrl: import.meta.env.BASE_URL, tracks: MUSIC_TRACKS });
-    /** @type {'loading' | 'title' | 'play' | 'paused' | 'travel' | 'talk' | 'shop'} */
+    /** @type {'loading' | 'title' | 'play' | 'paused' | 'travel' | 'talk' | 'shop' | 'ending'} */
     this.mode = 'loading';
     /** The adventure in progress (null on the title screen and in the lab). @type {Adventure | null} */
     this.adventure = null;
@@ -78,6 +83,12 @@ export class Game {
     this.sandbox = /** @type {any} */ (null);
     /** Seconds until the fallen player is brought back (0: not waiting). */
     this.reviveTimer = 0;
+    /** Save slots (localStorage; memory only if the browser blocks it). */
+    this.saves = createSaves();
+    /** The slot this playthrough saves to. */
+    this.slot = 'slot1';
+    /** The ending's camera and timing. */
+    this.endingTime = 0;
     /** The first-play hint has been shown. */
     this.greeted = false;
     /** Set when the game itself releases the mouse (opening the lab), so it doesn't pause. */
@@ -132,9 +143,25 @@ export class Game {
       inventory: () => this.inventoryView(),
       buy: (shop, item) => this.buy(shop, item),
       closeShop: () => this.closeShop(),
+      slots: () => slotSummaries(this.saves),
+      newGame: (slot) => {
+        this.menus.closeAll();
+        void this.newGame(slot).then(() => this.play());
+      },
+      loadGame: (slot) => void this.loadSlot(slot),
+      continueGame: () => {
+        const slot = mostRecentSlot(this.saves);
+        if (slot) void this.loadSlot(slot);
+      },
+      saveAndQuit: () => {
+        this.save(true);
+        this.toTitle();
+      },
+      credits: () => parseCredits(assetsMarkdown),
+      keepPlaying: () => void this.keepPlaying(),
     });
     this.dialogue = new DialogueBox(this.overlay, { sound: (name) => this.audio.play(name) });
-    this.dialogue.onClose = () => this.endTalk();
+    this.dialogue.onClose = () => (this.mode === 'ending' ? this.afterEndingTalk() : this.endTalk());
     this.touch = new TouchControls(this.input, this.overlay, {
       surface: this.canvas,
       buttons: [
@@ -191,19 +218,55 @@ export class Game {
 
   // ------------------------------------------------------------------ the adventure
 
-  /** Start a new adventure in the village. */
-  async newGame() {
+  /**
+   * Start a new adventure in the village, saving to a slot.
+   * @param {string} [slot]
+   */
+  async newGame(slot = 'slot1') {
+    this.slot = slot;
     const state = GameState.newGame();
     await this.startAdventure(state, START.area, START.spawn);
     this.hud.showBanner(AREAS[/** @type {keyof typeof AREAS} */ (START.area)].name, 2.5);
+    this.save();
+  }
+
+  /**
+   * Load a slot and carry on where it was saved.
+   * @param {string} slot
+   */
+  async loadSlot(slot) {
+    const result = loadGame(this.saves, slot);
+    if (!result.state) {
+      this.hud.toast('Could not load', result.warning ?? '', 'notice');
+      return;
+    }
+    this.slot = slot;
+    this.menus.closeAll();
+    await this.startAdventure(result.state, result.state.area, result.state.spawn, { resume: true });
+    this.play();
+    this.hud.showBanner(this.adventure?.area.name ?? '', 2.2);
+    if (result.migratedFrom) this.hud.toast('Save updated', `This save was made by an older version (v${result.migratedFrom}) and has been brought up to date.`, 'notice');
+  }
+
+  /**
+   * Save the adventure to its slot (autosaves, and Save and quit).
+   * @param {boolean} [here]  also where the player stands (Save and quit)
+   */
+  save(here = false) {
+    if (!this.adventure) return false;
+    const result = this.saves.save(this.slot, this.adventure.saveData(here));
+    if (!result.ok) this.hud.toast('Not saved', result.error ?? '', 'notice');
+    else this.hud.flashSaved();
+    return result.ok;
   }
 
   /**
    * @param {GameState} state
    * @param {string} area
    * @param {string} spawn
+   * @param {{ resume?: boolean }} [options]  resume: a loaded game (its saved position)
    */
-  async startAdventure(state, area, spawn) {
+  async startAdventure(state, area, spawn, { resume = false } = {}) {
     this.adventure?.dispose();
     const adventure = new Adventure(state, { feel: () => this.feel, models: this.models });
     this.adventure = adventure;
@@ -216,6 +279,7 @@ export class Game {
     adventure.events.on('checkpoint', (e) => {
       if (e.fresh) this.hud.showBanner('The hearthstone glows: you\'ll come back here if you fall.', 3);
       this.audio.play('checkpoint');
+      this.save();
     });
     adventure.events.on('notice', (e) => this.hud.toast('', e.text, 'notice'));
     adventure.events.on('banner', (e) => this.hud.showBanner(e.text, 3));
@@ -228,7 +292,8 @@ export class Game {
     });
     adventure.events.on('shells', (e) => this.view.floaters.add(`+${e.amount} shells`, { ...e.position, y: e.position.y + 1.6 }, 'note good'));
     adventure.events.on('healed', (e) => this.audio.play('drink', null));
-    await adventure.enter(area, spawn);
+    if (resume) await adventure.resume();
+    else await adventure.enter(area, spawn);
     await this.useSandbox(/** @type {Sandbox} */ (adventure.sandbox));
     this.prepareNeighbours();
   }
@@ -262,6 +327,7 @@ export class Game {
     this.updateTouch();
     void this.fadeTo(0);
     if (!respawn) this.hud.showBanner(this.adventure.area.name, 2.2);
+    this.save();
     this.prepareNeighbours();
   }
 
@@ -319,7 +385,48 @@ export class Game {
     this.updateTouch();
     if (after.shop) this.openShop(after.shop);
     else if (after.travel) void this.travel(after.travel.area, after.travel.spawn);
-    else if (after.ending) this.hud.showBanner('The Hearth burns again.', 4);
+    else if (after.ending) this.startEnding();
+  }
+
+  // ------------------------------------------------------------------ the ending
+
+  /** The Hearth is lit: wisps rise, Ina speaks, then the credits. */
+  startEnding() {
+    this.mode = 'ending';
+    this.endingTime = 0;
+    this.endingTalked = false;
+    this.input.exitPointerLock();
+    this.touch.hide();
+    this.hud.setVisible(false);
+    this.music.play(MUSIC.victory);
+    this.save();
+  }
+
+  /** @param {number} dt */
+  updateEnding(dt) {
+    this.endingTime += dt;
+    const sb = this.sandbox;
+    const hearth = sb.objects.find((o) => o.type === 'hearth');
+    const at = hearth ? hearth.position : sb.player.position;
+    sb.frameShot({ pivot: { x: at.x, y: at.y + 1.6, z: at.z }, yaw: 0.6 + this.endingTime * 0.12, pitch: -0.3, distance: 9 });
+    this.view.wisps(at, dt);
+    if (this.endingTime > 3 && !this.endingTalked && !this.dialogue.isOpen) {
+      this.endingTalked = true;
+      const runner = new DialogueRunner(DIALOGUES.ending, /** @type {Adventure} */ (this.adventure).state, 'ending', { player: 'Ren' }).start();
+      this.dialogue.open(runner, settings.values.textSpeed);
+    }
+  }
+
+  /** The ending's conversation is over: the credits. */
+  afterEndingTalk() {
+    this.menus.showEnding();
+  }
+
+  /** After the credits: back to the village, where everyone has something new to say. */
+  async keepPlaying() {
+    this.mode = 'play';
+    this.hud.setVisible(true);
+    await this.travel('village', 'gate');
   }
 
   /** @param {string} id */
@@ -502,6 +609,15 @@ export class Game {
    * @param {Sandbox} sandbox
    */
   listenSandbox(sandbox) {
+    sandbox.events.on('noticed', (d) => {
+      if (d.boss) this.music.play(MUSIC.boss);
+    });
+    sandbox.events.on('roar', () => this.hud.showBanner('The Warden roars! Cindermites crawl out of the ash.', 3));
+    sandbox.events.on('hit', (d) => {
+      if (!d.killed || d.target.def?.brain !== 'warden') return;
+      this.music.play(MUSIC.victory);
+      this.hud.showBanner('The Cinder Warden crumbles. Something glows in the ash.', 4);
+    });
     if (sandbox.area.id !== 'training') return;
     let seenArena = false;
     sandbox.events.on('died', (d) => {
@@ -548,6 +664,12 @@ export class Game {
     if (this.mode === 'talk') {
       this.dialogue.update(dt, frame);
       this.adventure?.talkStep();
+      return;
+    }
+    if (this.mode === 'ending') {
+      if (this.dialogue.isOpen) this.dialogue.update(dt, frame);
+      else this.menus.handlePad(frame, this.input.lastDevice === 'gamepad');
+      this.updateEnding(dt);
       return;
     }
     if (this.mode !== 'play') {
@@ -602,6 +724,8 @@ export class Game {
     this.hud.updateHealth(dt, sb.player);
     const t = sb.lockTarget;
     this.hud.updateReticle(t ? this.view.project({ x: t.position.x, y: t.position.y + t.height * 0.6, z: t.position.z }) : null, t);
+    const boss = sb.boss;
+    this.hud.updateBoss(boss && boss.brain.aware ? /** @type {any} */ (boss) : null);
     const device = { device: this.input.lastDevice, padStyle: this.input.gamepadStyle, keys: settings.values.keys, bindings: this.input.bindings };
     this.hud.updateHints({ ...device, enabled: settings.values.hints && this.mode !== 'talk' });
     const state = this.adventure?.state;
