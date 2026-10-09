@@ -139,15 +139,17 @@ test.describe('smoke', () => {
       for (let i = 0; i < 4; i++) {
         await g.travel('halls', 'start');
         await g.travel('village', 'gate');
+        // Read once the next area has been preloaded, so every reading is the same moment.
+        await g.neighboursReady;
         await new Promise((r) => setTimeout(r, 500));
         out.push(g.view.renderer.info.memory.textures);
       }
       return out;
     });
     // No growth from trip to trip. (The leak this guards against added about
-    // 150 textures per round trip. Counts also move with when neighbouring
-    // areas are precompiled in idle time, and can drop: only growth fails.)
-    expect(Math.max(...counts.slice(1)) - counts[1], JSON.stringify(counts)).toBeLessThan(30);
+    // 150 textures per round trip. Each reading waits for the neighbouring
+    // area's idle-time preload, which otherwise moved the count by ~30.)
+    expect(Math.max(...counts.slice(1)) - Math.min(...counts.slice(1)), JSON.stringify(counts)).toBeLessThan(30);
     expect(counts[3] - counts[1], JSON.stringify(counts)).toBeLessThan(30);
     expect(errors).toEqual([]);
   });

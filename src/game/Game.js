@@ -53,6 +53,8 @@ export class Game {
   /** @param {HTMLElement} root */
   constructor(root) {
     this.root = root;
+    /** Settles once the current area's neighbours are preloaded (prepareNeighbours). @type {Promise<unknown>} */
+    this.neighboursReady = Promise.resolve();
     this.storage = browserStorage();
     loadSettings(this.storage);
 
@@ -366,13 +368,18 @@ export class Game {
     if (!adventure) return;
     const next = new Set((adventure.area.exits ?? []).map((e) => e.to));
     const idle = window.requestIdleCallback ?? ((/** @type {() => void} */ fn) => setTimeout(fn, 200));
-    for (const id of next) {
-      idle(() => {
-        if (this.adventure !== adventure || adventure.prepared.has(id)) return;
-        const root = adventure.prepare(id, (areaId) => buildArea(AREAS[/** @type {keyof typeof AREAS} */ (areaId)], this.models));
-        void this.view.precompile(root);
-      });
-    }
+    this.neighboursReady = Promise.all(
+      [...next].map(
+        (id) =>
+          new Promise((resolve) => {
+            idle(() => {
+              if (this.adventure !== adventure || adventure.prepared.has(id)) return resolve(undefined);
+              const root = adventure.prepare(id, (areaId) => buildArea(AREAS[/** @type {keyof typeof AREAS} */ (areaId)], this.models));
+              void this.view.precompile(root).finally(() => resolve(undefined));
+            });
+          }),
+      ),
+    );
   }
 
   /**
