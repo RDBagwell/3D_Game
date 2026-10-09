@@ -95,4 +95,21 @@ describe('areas', () => {
     expect(exits).toEqual([{ area: 'village', spawn: 'gate' }]);
     sb.dispose();
   });
+
+  it('falling out of the world puts the hero back on the last solid ground, a little hurt', async () => {
+    const sb = await Sandbox.create({ area: AREAS.village });
+    const idle = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: {} };
+    for (let i = 0; i < 30; i++) sb.step(idle); // stand on the dock long enough to be remembered
+    const safe = { ...sb.player.position };
+    let fell = 0;
+    sb.events.on('fellOut', () => fell++);
+    const hp = sb.player.hp;
+    sb.player.body.teleport({ x: safe.x + 300, y: -50, z: safe.z }); // somewhere far below the world
+    sb.step(idle);
+    expect(fell).toBe(1);
+    expect(Math.hypot(sb.player.position.x - safe.x, sb.player.position.z - safe.z)).toBeLessThan(0.5);
+    expect(sb.player.hp).toBeLessThan(hp);
+    expect(sb.player.alive).toBe(true);
+    sb.dispose();
+  });
 });

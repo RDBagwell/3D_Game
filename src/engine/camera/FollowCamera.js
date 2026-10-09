@@ -32,6 +32,9 @@ import { clamp, damp, dampFactor, angleDelta, approachAngle, lerp } from '../cor
  * @property {number} lookAhead   metres the view leads the player at full speed
  * @property {boolean} collision  pull in in front of walls
  * @property {boolean} lockFraming  while locked on, turn to keep player and target in view
+ * @property {number} [follow]  0..1: how strongly the camera drifts back behind a running player
+ *                              once they leave it alone (0 = never)
+ * @property {number} [followDelay]  seconds without turning the camera before it starts to follow
  */
 
 /**
@@ -40,6 +43,7 @@ import { clamp, damp, dampFactor, angleDelta, approachAngle, lerp } from '../cor
  * @property {{ x: number, z: number }} lead  direction of travel, scaled 0..1 by speed
  * @property {{ x: number, y: number }} look  radians to turn this update
  * @property {{ x: number, y: number, z: number } | null} lockTarget  feet of the locked-on enemy
+ * @property {number} [lockHeight]  the locked-on enemy's height (m), to frame tall ones
  * @property {number | null} recenter  if set, swing behind a character facing this yaw
  * @property {{ pivot: { x: number, y: number, z: number }, yaw: number, pitch: number, distance: number }} [shot]
  *           a framed shot that overrides the follow camera (conversations): look at `pivot`
@@ -54,6 +58,12 @@ const LIFT_ROOM = 1.8;
 const LIFT_PITCHES = [-0.8, -1.05, -1.3, -1.45];
 /** Turns (radians) it tries, nearest first, to find room to the side. */
 const SWING_TRIES = [0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6];
+/** Running more directly at the camera than this (radians off "behind"), it doesn't follow round. */
+const FOLLOW_MAX_TURN = 2.5;
+/** Locked on, the camera only turns once the target is this far (radians) from straight ahead. */
+const LOCK_DEAD_ZONE = 0.3;
+/** Seconds a recentre takes to settle (eased in and out). */
+const RECENTER_TIME = 0.35;
 
 export class FollowCamera {
   /**
@@ -70,7 +80,7 @@ export class FollowCamera {
     this.probeRadius = probeRadius;
     this.probe = probe ?? (() => null);
     /** @type {CameraSettings} */
-    this.settings = { smoothing: 0.12, lookAhead: 1.2, collision: true, lockFraming: true };
+    this.settings = { smoothing: 0.12, lookAhead: 1.2, collision: true, lockFraming: true, follow: 0.6, followDelay: 0.8 };
 
     this.yaw = 0;
     this.pitch = -0.32;
@@ -91,6 +101,11 @@ export class FollowCamera {
     this.prevPosition = new Vector3();
     /** Recentring in progress: the yaw being swung to. @type {number | null} */
     this.recenterYaw = null;
+    /** The recentre's start yaw and how far through it is (0..1), for its ease. */
+    this.recenterFrom = 0;
+    this.recenterT = 0;
+    /** Seconds since the player last turned the camera themselves. */
+    this.sinceLook = 0;
     /** Last collision probe, for the lab's camera view. */
     this.probeInfo = { from: new Vector3(), to: new Vector3(), hit: false, wanted: distance, allowed: distance };
     this.initialised = false;
@@ -128,7 +143,12 @@ export class FollowCamera {
 
     // 1. Orbit angles: player input, lock-on framing or a recentre swing.
     const lookMoved = Math.abs(input.look.x) > 1e-4 || Math.abs(input.look.y) > 1e-4;
-    if (input.recenter !== null) this.recenterYaw = input.recenter + Math.PI;
+    this.sinceLook = lookMoved ? 0 : this.sinceLook + dt;
+    if (input.recenter !== null) {
+      this.recenterYaw = input.recenter + Math.PI;
+      this.recenterFrom = this.yaw;
+      this.recenterT = 0;
+    }
     if (lookMoved && !input.lockTarget) this.recenterYaw = null;
 
     if (input.shot) {
@@ -138,12 +158,15 @@ export class FollowCamera {
       this.pitch = damp(this.pitch, input.shot.pitch, 0.18, dt);
       this.recenterYaw = null;
     } else if (input.lockTarget && s.lockFraming) {
-      // Put the camera on the far side of the player from the target.
+      // Put the camera on the far side of the player from the target, but
+      // only turn once the target drifts out of the middle of the view, so a
+      // fight that's already well framed doesn't keep the camera swaying.
       const dx = input.target.x - input.lockTarget.x;
       const dz = input.target.z - input.lockTarget.z;
       if (dx * dx + dz * dz > 0.01) {
-        const wanted = Math.atan2(dx, dz);
-        this.yaw += angleDelta(this.yaw, wanted) * dampFactor(Math.max(0.08, s.smoothing), dt);
+        const off = angleDelta(this.yaw, Math.atan2(dx, dz));
+        const excess = Math.sign(off) * Math.max(0, Math.abs(off) - LOCK_DEAD_ZONE);
+        this.yaw += excess * dampFactor(Math.max(0.08, s.smoothing), dt);
       }
       this.pitch = damp(this.pitch, -0.32, 0.2, dt);
       this.recenterYaw = null;
@@ -151,8 +174,21 @@ export class FollowCamera {
       this.yaw -= input.look.x;
       this.pitch = clamp(this.pitch + input.look.y, this.minPitch, this.maxPitch);
       if (this.recenterYaw !== null) {
-        this.yaw = approachAngle(this.yaw, this.recenterYaw, 9 * dt);
-        if (Math.abs(angleDelta(this.yaw, this.recenterYaw)) < 1e-3) this.recenterYaw = null;
+        // Eased in and out over RECENTER_TIME, rather than a flat-speed snap.
+        this.recenterT = Math.min(1, this.recenterT + dt / RECENTER_TIME);
+        const e = this.recenterT * this.recenterT * (3 - 2 * this.recenterT);
+        this.yaw = this.recenterFrom + angleDelta(this.recenterFrom, this.recenterYaw) * e;
+        if (this.recenterT >= 1) this.recenterYaw = null;
+      } else if ((s.follow ?? 0) > 0 && this.sinceLook >= (s.followDelay ?? 0.8)) {
+        // Auto-follow: left alone, the camera drifts round behind a running
+        // player, faster the faster they run. Not when they run at it (that
+        // would whip it round), and gently enough that turning it by hand
+        // always wins.
+        const speed = Math.hypot(input.lead.x, input.lead.z);
+        if (speed > 0.3) {
+          const off = angleDelta(this.yaw, Math.atan2(input.lead.x, input.lead.z) + Math.PI);
+          if (Math.abs(off) < FOLLOW_MAX_TURN) this.yaw += off * dampFactor(1.1 / (s.follow ?? 0.6), dt) * speed;
+        }
       }
     }
 
@@ -167,10 +203,12 @@ export class FollowCamera {
       goal.set(input.shot.pivot.x, input.shot.pivot.y, input.shot.pivot.z);
       wantedDistance = input.shot.distance;
     } else if (input.lockTarget && s.lockFraming) {
-      const t = new Vector3(input.lockTarget.x, input.lockTarget.y + this.pivotHeight * 0.8, input.lockTarget.z);
+      // Aim at the target's upper body, whatever its size (a tall Warden isn't cropped).
+      const height = input.lockHeight ?? this.pivotHeight / 0.6;
+      const t = new Vector3(input.lockTarget.x, input.lockTarget.y + Math.max(this.pivotHeight * 0.8, height * 0.55), input.lockTarget.z);
       const gap = Math.hypot(t.x - input.target.x, t.z - input.target.z);
       goal.lerp(t, 0.35);
-      wantedDistance += clamp(gap * 0.25, 0, 2.2);
+      wantedDistance += clamp(gap * 0.25, 0, 2.2) + Math.max(0, height - 2) * 0.9;
     }
     const f = dampFactor(s.smoothing, dt);
     this.pivot.lerp(goal, f);

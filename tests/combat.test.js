@@ -25,6 +25,14 @@ describe('attack frame data', () => {
     expect(PLAYER_COMBO.every((k) => ATTACKS[k])).toBe(true);
   });
 
+  it("the hero's swings each have a measured impact point, so the blade lands with the hit", () => {
+    for (const key of PLAYER_COMBO) {
+      const a = ATTACKS[/** @type {keyof typeof ATTACKS} */ (key)];
+      expect(a.animImpact, key).toBeGreaterThan(0);
+      expect(a.animImpact, key).toBeLessThan(1);
+    }
+  });
+
   it('phases follow startup, active and recovery frames', () => {
     const a = ATTACKS.slash1;
     expect(attackPhase(a, 0)).toBe('startup');

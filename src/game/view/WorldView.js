@@ -379,6 +379,7 @@ export class WorldView {
       if (d.weak) this.floaters.add(`Weak point! ${d.damage}`, { ...d.point, y: d.point.y + 0.5 }, 'note good');
     });
     ev.on('block', (d) => {
+      if (d.target?.team === 'player') this.views.get('player')?.blockFlash();
       if (f().hitSounds) play('block', d.point);
       if (f().particles) this.particles.burst(d.point, d.direction, 10, { color: [0.6, 0.85, 1], speed: 5 });
       this.floaters.add('Blocked', { ...d.point, y: d.point.y + 0.4 }, 'note');

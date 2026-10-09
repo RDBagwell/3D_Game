@@ -38,6 +38,10 @@ export class CharacterView {
     this.root.add(model.root);
     this.animator = new Animator(model.root, model.clips);
     this.flash = 0;
+    /** Seconds this view has been drawn (for short reactions like the block recoil). */
+    this.time = 0;
+    /** When the shield last took a blow (this.time), or -1. */
+    this.blockedAt = -1;
     /** True while materials carry flash emissive that must be cleared. */
     this.flashed = false;
     /** Softer flashes with reduced motion. */
@@ -94,6 +98,24 @@ export class CharacterView {
     }
   }
 
+  /**
+   * Playback rate for a locomotion clip at a ground speed: the clip's own
+   * speed (PLAYER.clipSpeeds) matched to the hero's, within limits so a
+   * near-stop doesn't freeze the legs or a burst spin them.
+   * @param {string} clip
+   * @param {number} speed  m/s
+   */
+  legSpeed(clip, speed) {
+    const natural = /** @type {Record<string, number>} */ (PLAYER.clipSpeeds)[clip];
+    if (!natural) return 1;
+    return Math.min(2.6, Math.max(0.5, speed / natural));
+  }
+
+  /** The shield took a blow: a short recoil (Block_Hit) before holding it up again. */
+  blockFlash() {
+    this.blockedAt = this.time;
+  }
+
   /** Flash white for an instant (a hit). */
   hitFlash() {
     this.flash = 1;
@@ -106,6 +128,7 @@ export class CharacterView {
    * @param {boolean} frozen  hit-stop: hold the pose
    */
   update(alpha, prev, dt, frozen) {
+    if (!frozen) this.time += dt;
     const a = this.actor;
     const p = a.position;
     if (prev) {
@@ -153,12 +176,23 @@ export class CharacterView {
     const state = fsm.current;
     const speed = Math.hypot(pl.velocity.x, pl.velocity.z);
     switch (state) {
-      case 'attack':
-        this.setClip(`attack:${pl.swingId}`, pl.attack.anim, { loop: false, duration: totalFrames(pl.attack) / 60 });
+      case 'attack': {
+        // Time the clip so its blade is fastest in the middle of the active
+        // frames (when the hit lands), and fade into it quickly: the slower
+        // fade used elsewhere would swallow most of a 7-frame startup.
+        const atk = pl.attack;
+        const duration = atk.animImpact ? (atk.startup + atk.active / 2) / 60 / atk.animImpact : totalFrames(atk) / 60;
+        this.setClip(`attack:${pl.swingId}`, atk.anim, { loop: false, duration, fade: Math.min(this.crossFade, 0.05) });
         break;
-      case 'roll':
-        this.setClip(`roll:${entry}`, ANIMATIONS.roll, { loop: false, duration: PLAYER.roll.frames / 60 });
+      }
+      case 'roll': {
+        // A dodge in the direction it actually goes (locked on, the hero
+        // keeps facing the target, so it can be sideways or back).
+        const clip = { forward: ANIMATIONS.roll, backward: ANIMATIONS.rollBackward, left: ANIMATIONS.rollLeft, right: ANIMATIONS.rollRight }[pl.rollSide];
+        const frames = pl.rollKind === 'backstep' ? PLAYER.backstep.frames : PLAYER.roll.frames;
+        this.setClip(`roll:${entry}`, clip, { loop: false, duration: frames / 60 });
         break;
+      }
       case 'hitstun':
         this.setClip(`hit:${entry}`, ANIMATIONS.hitstun, { loop: false, duration: Math.max(0.3, pl.hitstunFrames / 60) });
         break;
@@ -169,8 +203,16 @@ export class CharacterView {
       case 'dead':
         this.setClip(`dead:${entry}`, ANIMATIONS.dead, { loop: false, duration: 1.2 });
         break;
+      case 'fall':
+        this.setClip('fall', ANIMATIONS.fall, { fade: 0.15 });
+        break;
+      case 'land':
+        this.setClip(`land:${entry}`, ANIMATIONS.land, { loop: false, duration: PLAYER.fall.landFrames / 60, fade: 0.05 });
+        break;
       case 'shield':
-        this.setClip('shield', ANIMATIONS.shield);
+        // A blow on the shield: a short recoil, then back to holding it up.
+        if (this.blockedAt >= 0 && this.time - this.blockedAt < 0.3) this.setClip(`blockhit:${this.blockedAt}`, ANIMATIONS.blockHit, { loop: false, duration: 0.3, fade: 0.04 });
+        else this.setClip('shield', ANIMATIONS.shield);
         break;
       case 'drink':
         this.setClip(`drink:${entry}`, ANIMATIONS.drink, { loop: false, duration: PLAYER.drink.frames / 60 });
@@ -178,18 +220,24 @@ export class CharacterView {
       case 'strafe': {
         const m = pl.localMove;
         let clip = 'Idle';
-        if (Math.hypot(m.x, m.y) > 0.15) {
+        if (Math.hypot(m.x, m.y) > 0.15 && speed > 0.2) {
           if (Math.abs(m.x) > Math.abs(m.y)) clip = m.x > 0 ? 'Running_Strafe_Right' : 'Running_Strafe_Left';
-          else clip = m.y > 0 ? 'Running_A' : 'Walking_Backwards';
+          else if (m.y > 0) clip = speed < PLAYER.walkBelow ? 'Walking_A' : 'Running_A';
+          else clip = 'Walking_Backwards';
         }
-        this.setClip(`strafe:${clip}`, clip, { speed: clip === 'Idle' ? 1 : Math.max(0.6, speed / PLAYER.strafeSpeed) });
+        // Changing direction keeps the stride (syncPhase), so the legs don't pop.
+        this.setClip(`strafe:${clip}`, clip, { speed: this.legSpeed(clip, speed), syncPhase: clip !== 'Idle' });
+        if (this.animator.current && clip !== 'Idle') this.animator.current.timeScale = this.legSpeed(clip, speed);
         break;
       }
-      case 'run':
-        this.setClip('run', ANIMATIONS.run);
-        // Match the legs to the ground speed so feet don't slide.
-        if (this.animator.current) this.animator.current.timeScale = Math.max(0.35, speed / PLAYER.runSpeed);
+      case 'run': {
+        // Walk when slow, run when fast, each played at the speed that keeps
+        // the planted foot still on the ground.
+        const clip = speed < PLAYER.walkBelow ? ANIMATIONS.walk : ANIMATIONS.run;
+        this.setClip(`run:${clip}`, clip, { syncPhase: true });
+        if (this.animator.current) this.animator.current.timeScale = this.legSpeed(clip, speed);
         break;
+      }
       default:
         this.setClip('idle', ANIMATIONS.idle);
     }

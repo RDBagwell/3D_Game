@@ -37,7 +37,7 @@ pull request with its own tests. Phases run in order; each builds on the last.
   - Villagers: sitting.
   - Cost: +0.96 MB, or 0.17 MB gzipped (docs/PERFORMANCE.md).
 
-## Phase 2: the hero's feel
+## Phase 2: the hero's feel (done; see docs/GAME-FEEL.md)
 
 - **Camera:** drifts back behind you after a moment of running without you
   touching it. Recentring is smooth. Locked on, it frames the target's

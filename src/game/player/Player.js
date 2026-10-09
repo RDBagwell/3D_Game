@@ -11,6 +11,7 @@ import { attackPhase, isInFront } from '../combat/hitboxes.js';
  *     └──────┴──────┴─→ roll, attack, shield ...
  *   any → hitstun → idle/run/strafe   any → knockdown → idle/run/strafe   any → dead
  *   idle/run/strafe/shield → drink (a tonic from the quick slot) → idle/run/strafe
+ *   idle/run/strafe → fall (off an edge) → land (a long drop) → idle/run/strafe
  *
  * TRANSITIONS below is the full table. Each state in `states()` owns:
  *   - its animation (ANIMATIONS, read by the view),
@@ -23,17 +24,19 @@ import { attackPhase, isInFront } from '../combat/hitboxes.js';
  * runs in Node for tests.
  */
 
-/** @typedef {'idle' | 'run' | 'strafe' | 'attack' | 'roll' | 'shield' | 'drink' | 'hitstun' | 'knockdown' | 'dead'} PlayerState */
+/** @typedef {'idle' | 'run' | 'strafe' | 'attack' | 'roll' | 'shield' | 'drink' | 'fall' | 'land' | 'hitstun' | 'knockdown' | 'dead'} PlayerState */
 
 /** @type {Record<PlayerState, PlayerState[]>} */
 export const TRANSITIONS = {
-  idle: ['run', 'strafe', 'attack', 'roll', 'shield', 'drink', 'hitstun', 'knockdown', 'dead'],
-  run: ['idle', 'strafe', 'attack', 'roll', 'shield', 'drink', 'hitstun', 'knockdown', 'dead'],
-  strafe: ['idle', 'run', 'attack', 'roll', 'shield', 'drink', 'hitstun', 'knockdown', 'dead'],
+  idle: ['run', 'strafe', 'attack', 'roll', 'shield', 'drink', 'fall', 'hitstun', 'knockdown', 'dead'],
+  run: ['idle', 'strafe', 'attack', 'roll', 'shield', 'drink', 'fall', 'hitstun', 'knockdown', 'dead'],
+  strafe: ['idle', 'run', 'attack', 'roll', 'shield', 'drink', 'fall', 'hitstun', 'knockdown', 'dead'],
   attack: ['attack', 'idle', 'run', 'strafe', 'roll', 'hitstun', 'knockdown', 'dead'],
   roll: ['idle', 'run', 'strafe', 'attack', 'roll', 'hitstun', 'knockdown', 'dead'],
   shield: ['idle', 'run', 'strafe', 'attack', 'roll', 'drink', 'hitstun', 'knockdown', 'dead'],
   drink: ['idle', 'run', 'strafe', 'hitstun', 'knockdown', 'dead'],
+  fall: ['land', 'idle', 'run', 'strafe', 'hitstun', 'knockdown', 'dead'],
+  land: ['idle', 'run', 'strafe', 'roll', 'hitstun', 'knockdown', 'dead'],
   hitstun: ['hitstun', 'idle', 'run', 'strafe', 'knockdown', 'dead'],
   knockdown: ['idle', 'run', 'strafe', 'dead'],
   dead: [],
@@ -49,10 +52,17 @@ const USE_ITEM_BUFFER = 40;
 export const ANIMATIONS = {
   idle: 'Idle',
   run: 'Running_A',
+  walk: 'Walking_A',
+  blockHit: 'Block_Hit',
   strafe: 'Idle',
   roll: 'Dodge_Forward',
+  rollBackward: 'Dodge_Backward',
+  rollLeft: 'Dodge_Left',
+  rollRight: 'Dodge_Right',
   shield: 'Blocking',
   drink: 'Use_Item',
+  fall: 'Jump_Idle',
+  land: 'Jump_Land',
   hitstun: 'Hit_A',
   knockdown: 'Death_B',
   getUp: 'Lie_StandUp',
@@ -118,6 +128,12 @@ export class Player {
     /** The tonic being drunk has taken effect. */
     this.drank = false;
     this.rollDir = { x: 0, z: 1 };
+    /** Updates spent falling (the fall state). */
+    this.fallFrames = 0;
+    /** The roll in progress: a roll, or a backstep (rolling in place while locked on). */
+    this.rollKind = /** @type {'roll' | 'backstep'} */ ('roll');
+    /** Which way the roll goes relative to where the hero faces (for its animation). */
+    this.rollSide = /** @type {'forward' | 'backward' | 'left' | 'right'} */ ('forward');
     this.hitstunFrames = 0;
     this.invulnerableFrames = 0;
     this.distanceSinceStep = 0;
@@ -160,8 +176,13 @@ export class Player {
     if (this.fsm.is('knockdown') || this.fsm.is('dead') || this.invulnerableFrames > 0) return true;
     if (!this.fsm.is('roll') || !this.ctx) return false;
     const f = this.fsm.frames;
+    const iframes = Number(this.ctx.feel.rollIframes);
+    if (this.rollKind === 'backstep') {
+      const from = PLAYER.backstep.iframesFrom;
+      return f >= from && f < from + Math.min(iframes, PLAYER.backstep.iframes);
+    }
     const from = PLAYER.roll.iframesFrom;
-    return f >= from && f < from + Number(this.ctx.feel.rollIframes);
+    return f >= from && f < from + iframes;
   }
 
   /** @param {{ x: number, z: number }} from */
@@ -242,6 +263,17 @@ export class Player {
           }
         },
       },
+      fall: {
+        enter: () => (this.fallFrames = 0),
+        update: () => this.updateFall(),
+      },
+      land: {
+        enter: () => this.ctx?.emit('land', { position: this.position, player: this }),
+        update: () => {
+          this.slowDown(0.08);
+          if (this.fsm.frames >= PLAYER.fall.landFrames - 1) this.toLocomotion();
+        },
+      },
       dead: {
         enter: () => {
           this.velocity.x = this.velocity.z = 0;
@@ -258,6 +290,11 @@ export class Player {
   locomotion(locked) {
     const ctx = /** @type {PlayerContext} */ (this.ctx);
     const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
+    // Walked off an edge: falling (after a few frames, so a step down doesn't count).
+    if (!this.body.grounded && this.body.airFrames > PLAYER.fall.after) {
+      this.fsm.go('fall');
+      return;
+    }
     if (this.tryRoll()) return;
     if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
       this.attackKey = PLAYER_COMBO[0];
@@ -297,6 +334,17 @@ export class Player {
   }
 
   /** Back to idle, run or strafe after an action. */
+  /** In the air: a little steering, no attacks or rolls; land when the feet touch. */
+  updateFall() {
+    this.fallFrames++;
+    const dir = this.moveDirection();
+    this.accelerate(dir.x * PLAYER.runSpeed * PLAYER.fall.airControl, dir.z * PLAYER.runSpeed * PLAYER.fall.airControl, PLAYER.runSpeed);
+    if (!this.body.grounded) return;
+    // A real drop lands with a moment's recovery; a short one just carries on.
+    if (this.fallFrames + PLAYER.fall.after >= PLAYER.fall.hardAfter) this.fsm.go('land');
+    else this.toLocomotion();
+  }
+
   toLocomotion() {
     const ctx = this.ctx;
     if (ctx?.lockTarget) this.fsm.go('strafe');
@@ -388,23 +436,35 @@ export class Player {
   startRoll() {
     const ctx = /** @type {PlayerContext} */ (this.ctx);
     const dir = this.moveDirection();
+    this.rollKind = 'roll';
     if (dir.amount > 0.2) {
       const len = Math.hypot(dir.x, dir.z);
       this.rollDir = { x: dir.x / len, z: dir.z / len };
+    } else if (ctx.lockTarget) {
+      // No direction while locked on: hop straight back, still facing the target.
+      this.rollKind = 'backstep';
+      this.rollDir = { x: -Math.sin(this.facing), z: -Math.cos(this.facing) };
     } else {
       this.rollDir = { x: Math.sin(this.facing), z: Math.cos(this.facing) };
     }
     if (!ctx.lockTarget) this.facing = yawFromDirection(this.rollDir.x, this.rollDir.z);
+    // Which way that is from where the hero faces (locked on, the hero keeps
+    // facing the target, so a roll can go sideways or back).
+    const ahead = this.rollDir.x * Math.sin(this.facing) + this.rollDir.z * Math.cos(this.facing);
+    const right = this.rollDir.x * -Math.cos(this.facing) + this.rollDir.z * Math.sin(this.facing);
+    if (Math.abs(ahead) >= Math.abs(right)) this.rollSide = ahead >= 0 ? 'forward' : 'backward';
+    else this.rollSide = right > 0 ? 'right' : 'left';
     ctx.emit('roll', { position: this.position, player: this });
   }
 
   updateRoll() {
     const f = this.fsm.frames;
-    const t = f / PLAYER.roll.frames;
-    const speed = PLAYER.roll.speed * Math.max(0.15, 1 - t * t);
+    const data = this.rollKind === 'backstep' ? PLAYER.backstep : PLAYER.roll;
+    const t = f / data.frames;
+    const speed = data.speed * Math.max(0.15, 1 - t * t);
     this.velocity.x = this.rollDir.x * speed;
     this.velocity.z = this.rollDir.z * speed;
-    if (f >= PLAYER.roll.actFrom) {
+    if (f >= data.actFrom) {
       const ctx = /** @type {PlayerContext} */ (this.ctx);
       if (this.tryRoll()) return;
       if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
@@ -413,7 +473,7 @@ export class Player {
         return;
       }
     }
-    if (f >= PLAYER.roll.frames - 1) this.toLocomotion();
+    if (f >= data.frames - 1) this.toLocomotion();
   }
 
   /**

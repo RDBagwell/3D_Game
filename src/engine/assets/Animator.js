@@ -53,8 +53,11 @@ export class Animator {
    * @param {number} [options.duration]  stretch the clip to this many seconds
    * @param {number} [options.speed=1]  playback rate (ignored if duration is given)
    * @param {boolean} [options.restart=false]  play from the start even if it's already playing
+   * @param {boolean} [options.syncPhase=false]  start at the same point of its loop as the
+   *        clip playing now (a run turning into a strafe keeps its stride instead of
+   *        starting again on the same foot)
    */
-  play(name, { loop = true, fade, duration, speed = 1, restart = false } = {}) {
+  play(name, { loop = true, fade, duration, speed = 1, restart = false, syncPhase = false } = {}) {
     const clip = this.clips.get(name);
     if (!clip) {
       if (!this.warned.has(name)) {
@@ -69,7 +72,10 @@ export class Animator {
       action.timeScale = duration ? clip.duration / duration : speed;
       return action;
     }
+    const from = this.current;
+    const phase = syncPhase && from && from !== action ? (from.time % from.getClip().duration) / from.getClip().duration : 0;
     action.reset();
+    if (phase > 0) action.time = phase * clip.duration;
     action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1);
     action.clampWhenFinished = !loop;
     action.timeScale = duration ? clip.duration / duration : speed;

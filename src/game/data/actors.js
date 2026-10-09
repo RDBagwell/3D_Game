@@ -26,6 +26,29 @@ export const PLAYER = {
   runSpeed: 6.2,
   strafeSpeed: 4.3,
   shieldSpeed: 2.3,
+  /** Falling off an edge (the fall and land states). */
+  fall: {
+    /** Frames off the ground before it counts as a fall (so steps down don't). */
+    after: 6,
+    /** Steering in the air, as a fraction of running. */
+    airControl: 0.35,
+    /** Frames in the air after which landing takes a moment (Jump_Land). */
+    hardAfter: 24,
+    landFrames: 10,
+    /** Below this height an area's floor, the hero is caught and put back on solid ground. */
+    killY: -12,
+    /** Damage for falling out of the world (it's still a mistake). */
+    fallOutDamage: 10,
+  },
+  /** Below this speed (m/s) the hero walks rather than runs. */
+  walkBelow: 1.4,
+  /**
+   * How fast (m/s) each locomotion clip carries the knight at normal
+   * playback: the clip is sped up or slowed to the hero's real speed, so the
+   * planted foot doesn't slide. Measured from the clips (the toes' speed
+   * along the ground while they're down, at the game's 0.72 scale).
+   */
+  clipSpeeds: { Walking_A: 0.55, Walking_Backwards: 0.55, Running_A: 3.07, Running_Strafe_Left: 3.05, Running_Strafe_Right: 3.05 },
   roll: {
     frames: 26,
     /** m/s at the start; it eases out over the roll. */
@@ -34,6 +57,19 @@ export const PLAYER = {
     iframesFrom: 2,
     /** From this frame a buffered attack or roll may interrupt the end of the roll. */
     actFrom: 20,
+  },
+  /**
+   * The backstep: rolling with no direction held while locked on. A short
+   * hop straight back, quicker to recover from than a roll and covering
+   * less ground, for slipping out of reach without losing your footing.
+   */
+  backstep: {
+    frames: 18,
+    speed: 7.5,
+    iframesFrom: 1,
+    /** At most this many invulnerable frames (and never more than the lab's roll i-frames). */
+    iframes: 8,
+    actFrom: 13,
   },
   /** Shield blocks attacks within this many degrees either side of straight ahead. */
   blockHalfAngle: 65,

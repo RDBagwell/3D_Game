@@ -34,7 +34,13 @@
  *                lab's "combo buffer" frames earlier still count)
  *   rollCancelFrom  first frame a roll may interrupt the attack, when the lab's
  *                "attack-cancel windows" is on; otherwise only after `total`
- *   anim         the animation clip, stretched to the attack's length
+ *   anim         the animation clip
+ *   animImpact   (the hero's attacks) how far through the clip, 0..1, its
+ *                blade moves fastest: the clip is timed so that moment lands
+ *                in the middle of the active frames, when the hit is dealt.
+ *                Measured from the knight's clips (the sword tip's speed,
+ *                sampled at 120 points; Phase 2 of docs/ROADMAP.md).
+ *                Without it, the clip is stretched over the whole attack
  *
  * docs/GAME-FEEL.md has a diagram of slash1 with its buffer window.
  */
@@ -43,6 +49,7 @@
  * @typedef {object} Attack
  * @property {string} name
  * @property {string} anim
+ * @property {number} [animImpact]
  * @property {number} startup
  * @property {number} active
  * @property {number} recovery
@@ -67,6 +74,7 @@ export const ATTACKS = {
   slash1: {
     name: 'Slash',
     anim: '1H_Melee_Attack_Slice_Diagonal',
+    animImpact: 0.375,
     startup: 7,
     active: 4,
     recovery: 17,
@@ -85,6 +93,7 @@ export const ATTACKS = {
   slash2: {
     name: 'Return slash',
     anim: '1H_Melee_Attack_Slice_Horizontal',
+    animImpact: 0.233,
     startup: 6,
     active: 4,
     recovery: 18,
@@ -103,6 +112,7 @@ export const ATTACKS = {
   slash3: {
     name: 'Overhead chop',
     anim: '1H_Melee_Attack_Chop',
+    animImpact: 0.508,
     startup: 13,
     active: 5,
     recovery: 26,
