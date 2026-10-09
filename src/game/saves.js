@@ -14,6 +14,11 @@ import { AREAS } from './data/areas/index.js';
  *
  *   v1  area, spawn, checkpoint, flags, items, shells, questStages, playTime,
  *       position (optional: where you stood when you chose Save and quit)
+ *   v2  + settings: the player's settings when they saved. Loading a slot
+ *       restores the ones that belong to a playthrough (PLAYTHROUGH_SETTINGS:
+ *       difficulty, assists, text speed, hold or toggle); volumes, graphics
+ *       and keys stay as this browser has them. v1 saves get null (keep the
+ *       current settings).
  *
  * Saving happens by itself at hearthstones and whenever you change area, and
  * from the pause menu (Save and quit). A damaged save is reported in its
@@ -21,7 +26,7 @@ import { AREAS } from './data/areas/index.js';
  * never stops the game from starting.
  */
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 /** The three save slots. */
 export const SAVE_SLOTS = ['slot1', 'slot2', 'slot3'];
@@ -30,7 +35,13 @@ export const SAVE_SLOTS = ['slot1', 'slot2', 'slot3'];
  * Upgrade functions: MIGRATIONS[n] turns a version-n save into version n+1.
  * @type {Record<number, (data: any) => any>}
  */
-export const MIGRATIONS = {};
+export const MIGRATIONS = {
+  // v1 → v2: saves started carrying settings. Older ones have none to restore.
+  1: (data) => ({ ...data, settings: null }),
+};
+
+/** Settings that belong to a playthrough, restored when its slot is loaded. */
+export const PLAYTHROUGH_SETTINGS = /** @type {const} */ (['damageTaken', 'slowEnemies', 'autoLock', 'textSpeed', 'shieldMode', 'lockMode']);
 
 /**
  * @param {any} data
@@ -47,7 +58,10 @@ export function validateSaveData(data) {
     questStages: 'object',
     playTime: 'number',
     position: 'object?',
+    settings: 'any?',
   });
+  if (data && !('settings' in data)) problems.push('data.settings is missing');
+  if (data?.settings !== undefined && data.settings !== null && (typeof data.settings !== 'object' || Array.isArray(data.settings))) problems.push('data.settings should be an object or null');
   if (data?.position) problems.push(...validateShape(data.position, { x: 'number', y: 'number', z: 'number', yaw: 'number' }, 'data.position'));
   if (problems.length > 0) return problems;
   if (!Object.hasOwn(AREAS, data.area)) problems.push(`data.area "${data.area}" is not an area in this version of the game`);
@@ -122,12 +136,14 @@ export function mostRecentSlot(saves) {
  * Load a slot into a GameState, or explain why not.
  * @param {SaveSystem} saves
  * @param {string} slot
- * @returns {{ state: GameState | null, warning?: string, migratedFrom?: number }}
+ * @returns {{ state: GameState | null, settings?: Record<string, any> | null, warning?: string, migratedFrom?: number }}
  */
 export function loadGame(saves, slot) {
   const result = saves.load(slot);
   if (result.status !== 'ok') return { state: null, warning: result.warning ?? 'That slot is empty.' };
-  return { state: GameState.fromSaveData(result.data), migratedFrom: result.migratedFrom };
+  const saved = result.data.settings;
+  const settings = saved ? Object.fromEntries(PLAYTHROUGH_SETTINGS.filter((k) => k in saved).map((k) => [k, saved[k]])) : null;
+  return { state: GameState.fromSaveData(result.data), settings, migratedFrom: result.migratedFrom };
 }
 
 /**

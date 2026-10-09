@@ -29,7 +29,7 @@ describe('saves', () => {
   it('round-trip a playthrough through a slot', () => {
     const saves = createSaves(new MemoryStorage());
     const state = midGame();
-    expect(saves.save('slot2', state.toSaveData()).ok).toBe(true);
+    expect(saves.save('slot2', { ...state.toSaveData(), settings: null }).ok).toBe(true);
     const { state: back } = loadGame(saves, 'slot2');
     expect(back?.toSaveData()).toEqual(state.toSaveData());
   });
@@ -42,7 +42,8 @@ describe('saves', () => {
     adv.dispose();
     expect(data.position).toMatchObject({ x: 1.5, z: -5 });
     const saves = createSaves(new MemoryStorage());
-    saves.save('slot1', data);
+    saves.save('slot1', { ...data, settings: { damageTaken: 0.5, quality: 'low' } });
+    expect(loadGame(saves, 'slot1').settings).toEqual({ damageTaken: 0.5 }); // the playthrough's, not the device's
     const again = new Adventure(/** @type {GameState} */ (loadGame(saves, 'slot1').state));
     await again.resume();
     expect(again.state.area).toBe('halls');
@@ -56,8 +57,8 @@ describe('saves', () => {
   it('list three slots: empty, saved, and damaged, without throwing', () => {
     const storage = new MemoryStorage();
     const saves = createSaves(storage);
-    saves.save('slot1', midGame().toSaveData());
-    storage.setItem('emberwake:slot3', '{"format":"save","version":1,"data":{"area":42}');
+    saves.save('slot1', { ...midGame().toSaveData(), settings: null });
+    storage.setItem('emberwake:slot3', '{"format":"save","version":2,"data":{"area":42}');
     const list = slotSummaries(saves);
     expect(list.map((s) => s.status)).toEqual(['ok', 'empty', 'unreadable']);
     expect(list[0]).toMatchObject({ place: 'The Hearth Halls', progress: 'The Hearth Halls', playTime: 312.5 });
@@ -68,12 +69,27 @@ describe('saves', () => {
   });
 
   it('reject a save that parses but makes no sense', () => {
-    expect(validateSaveData({ ...midGame().toSaveData(), area: 'atlantis' })).toEqual(['data.area "atlantis" is not an area in this version of the game']);
-    expect(validateSaveData({ ...midGame().toSaveData(), items: { tonic: -1 } })[0]).toMatch(/whole number/);
+    expect(validateSaveData({ ...midGame().toSaveData(), settings: null, area: 'atlantis' })).toEqual(['data.area "atlantis" is not an area in this version of the game']);
+    expect(validateSaveData({ ...midGame().toSaveData(), settings: null, items: { tonic: -1 } })[0]).toMatch(/whole number/);
     const saves = createSaves(new MemoryStorage());
     const bad = createSaves(new MemoryStorage());
     void bad;
     expect(saves.save('slot1', { area: 'village' }).ok).toBe(false);
+  });
+
+  it('survive the version bump: a v1 save (before settings were saved) loads in v2', () => {
+    const storage = new MemoryStorage();
+    // Exactly what version 1 wrote (commit "cindermites, ash adepts, the Cinder Warden, saves and the ending").
+    const v1 = createSaves(storage);
+    v1.version = 1;
+    v1.migrations = {};
+    v1.validate = () => true;
+    expect(v1.save('slot1', midGame().toSaveData()).ok).toBe(true);
+    expect(JSON.parse(storage.getItem('emberwake:slot1') ?? '{}').version).toBe(1);
+    const result = loadGame(createSaves(storage), 'slot1');
+    expect(result.migratedFrom).toBe(1);
+    expect(result.settings).toBe(null);
+    expect(result.state?.toSaveData()).toEqual(midGame().toSaveData());
   });
 
   it('refuse a save from a newer version, with a reason', () => {

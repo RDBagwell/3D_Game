@@ -53,6 +53,28 @@ describe('areas', () => {
     sb.dispose();
   });
 
+  it('the village can be walked from the dock to the Hearth gate', async () => {
+    const sb = await Sandbox.create({ area: 'village', grunts: false });
+    // Up the dock, along the path, round the well, to the closed gate.
+    const waypoints = [[0, 12], [3, 6.5], [3, 1.5], [0, -2], [0, -29]];
+    let next = 0;
+    for (let i = 0; i < 60 * 20 && next < waypoints.length; i++) {
+      const p = sb.player.position;
+      const [wx, wz] = waypoints[next];
+      const dx = wx - p.x;
+      const dz = wz - p.z;
+      if (Math.hypot(dx, dz) < 0.6) {
+        next++;
+        continue;
+      }
+      const { forward: f, right: r } = sb.camera.groundAxes();
+      const len = Math.hypot(dx, dz);
+      sb.step({ ...idle, move: { x: (dx * r.x + dz * r.z) / len, y: (dx * f.x + dz * f.z) / len } });
+    }
+    expect(next).toBe(waypoints.length);
+    sb.dispose();
+  });
+
   it('closed gates block the way', async () => {
     const sb = await Sandbox.create({ area: 'halls', grunts: false });
     for (let i = 0; i < 60 * 12; i++) sb.step({ ...forward, move: { x: Math.max(-1, Math.min(1, -sb.player.position.x * 2)), y: 1 } });

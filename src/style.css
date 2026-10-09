@@ -244,3 +244,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .credit-list span { color: var(--muted); font-size: 14px; }
 .credit-list a { color: var(--orange-2); font-size: 13px; }
 .menu-credits { max-width: 640px; }
+
+/* ---- Settings sections. ---- */
+.form fieldset { border: 2px solid var(--ink-3); border-radius: 12px; margin: 0 0 12px; padding: 8px 12px 10px; text-align: left; }
+.form legend { padding: 0 6px; color: var(--orange-2); font-weight: 700; letter-spacing: 0.04em; }
+.form select { max-width: 60%; }
+
+/* The Controls screen leads with the device in use. */
+.touch-legend { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; text-align: left; }
+.touch-legend li { padding: 6px 10px; border-radius: 8px; background: var(--ink-2); }
+.controls-table.device-gamepad td:nth-child(3), .controls-table.device-gamepad th:nth-child(3),
+.controls-table.device-keyboard td:nth-child(2), .controls-table.device-keyboard th:nth-child(2) { color: var(--orange-2); font-weight: 700; }
+.controls-table.device-touch { opacity: 0.7; }

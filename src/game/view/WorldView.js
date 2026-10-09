@@ -9,6 +9,7 @@ import { ObjectView } from './ObjectView.js';
 import { Particles, Floaters } from './Effects.js';
 import { makeKnight, makeFoe, makeDummy, makeNpc } from './models.js';
 import { NPCS } from '../data/npcs.js';
+import { QUALITY } from '../data/quality.js';
 import { SURFACES } from '../data/sounds.js';
 import { hitSpheresAt } from '../combat/hitboxes.js';
 import { Sandbox } from '../sim/Sandbox.js';
@@ -80,6 +81,8 @@ export class WorldView {
     this.time = 0;
     /** The shadow-casting sun (daylight areas only). @type {DirectionalLight | null} */
     this.sun = null;
+    /** Graphics quality (Settings → Graphics). @type {typeof QUALITY.high} */
+    this.quality = QUALITY.high;
     /** The current checkpoint's hearthstone (it glows). @type {() => string | null} */
     this.checkpointObject = () => null;
     this.width = 1;
@@ -119,6 +122,7 @@ export class WorldView {
     scene.add(this.particles.object);
     scene.add(this.gizmos.object);
     this.bolts = new Map();
+    this.applyQualityToScene(false);
     this.listen();
   }
 
@@ -154,8 +158,8 @@ export class WorldView {
       scene.fog = new Fog(0xbfd9f2, 55, 170);
       const hemi = new HemisphereLight(0xdcefff, 0x8a7a5c, 1.4);
       const sun = new DirectionalLight(0xfff1d6, 2.4);
-      sun.castShadow = true;
-      sun.shadow.mapSize.set(this.mobile ? 1024 : 2048, this.mobile ? 1024 : 2048);
+      sun.castShadow = this.quality.shadows > 0;
+      sun.shadow.mapSize.set(this.quality.shadows || 1024, this.quality.shadows || 1024);
       const sc = sun.shadow.camera;
       sc.left = sc.bottom = -18;
       sc.right = sc.top = 18;
@@ -165,6 +169,53 @@ export class WorldView {
       sun.shadow.normalBias = 0.02;
       scene.add(hemi, sun, sun.target);
       this.sun = sun;
+    }
+  }
+
+  /**
+   * Apply a graphics quality preset (data/quality.js). Safe mid-game.
+   * @param {keyof typeof QUALITY} name
+   */
+  setQuality(name) {
+    const q = QUALITY[name] ?? QUALITY.high;
+    const shadowsChanged = (q.shadows > 0) !== (this.quality.shadows > 0) || q.shadows !== this.quality.shadows;
+    this.quality = q;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pixelRatio));
+    this.renderer.shadowMap.enabled = q.shadows > 0;
+    this.camera.far = q.far;
+    this.camera.updateProjectionMatrix();
+    this.particles.scale = q.particles;
+    if (this.sandbox) this.applyQualityToScene(shadowsChanged);
+    if (this.width > 1) this.resize(this.width, this.height);
+  }
+
+  /**
+   * @private
+   * @param {boolean} shadowsChanged
+   */
+  applyQualityToScene(shadowsChanged) {
+    const q = this.quality;
+    if (this.sun) {
+      this.sun.castShadow = q.shadows > 0;
+      if (q.shadows > 0 && this.sun.shadow.mapSize.x !== q.shadows) {
+        this.sun.shadow.mapSize.set(q.shadows, q.shadows);
+        this.sun.shadow.map?.dispose();
+        this.sun.shadow.map = null;
+      }
+    }
+    const fog = /** @type {Fog | null} */ (this.scene.fog);
+    if (fog && this.sandbox.area.look !== 'halls') {
+      fog.near = q.fog[0];
+      fog.far = q.fog[1];
+    }
+    this.torches.forEach((t, i) => (t.visible = i < q.lights));
+    if (shadowsChanged) {
+      // Materials compile differently with and without shadows.
+      this.scene.traverse((o) => {
+        const m = /** @type {any} */ (o).material;
+        if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true));
+        else if (m) m.needsUpdate = true;
+      });
     }
   }
 

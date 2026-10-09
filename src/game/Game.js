@@ -1,11 +1,12 @@
 import {
   FixedStepLoop, Input, AudioManager, MusicManager, AssetLoader, TouchControls, isTouchDevice, PerfHud,
-  browserStorage, readJson, writeJson, button,
+  browserStorage, readJson, writeJson, button, Ambience,
 } from '../engine/index.js';
 import { TICK, STORAGE } from './config.js';
-import { loadSettings, settings, bindingsFor } from './settings.js';
+import { loadSettings, settings, bindingsFor, updateSettings } from './settings.js';
 import { MODELS, MUSIC_TRACKS, MUSIC } from './data/assets.js';
-import { SOUNDS } from './data/sounds.js';
+import { SOUNDS, AMBIENCE } from './data/sounds.js';
+import { ControlAssists } from './input/controlAssists.js';
 import { FEEL_PRESETS } from './data/feel.js';
 import { sanitizeFeel, sanitizeShow, readLabQuery, matchingPreset } from './feel/feelSettings.js';
 import { Sandbox } from './sim/Sandbox.js';
@@ -75,6 +76,10 @@ export class Game {
     this.audio.register(SOUNDS);
     this.audio.autoUnlock(window);
     this.music = new MusicManager(this.audio, { baseUrl: import.meta.env.BASE_URL, tracks: MUSIC_TRACKS });
+    this.ambience = new Ambience(this.audio);
+    this.ambience.register(AMBIENCE);
+    /** Hold or toggle for the shield and lock-on. */
+    this.assists = new ControlAssists();
     /** @type {'loading' | 'title' | 'play' | 'paused' | 'travel' | 'talk' | 'shop' | 'ending'} */
     this.mode = 'loading';
     /** The adventure in progress (null on the title screen and in the lab). @type {Adventure | null} */
@@ -159,6 +164,7 @@ export class Game {
       },
       credits: () => parseCredits(assetsMarkdown),
       keepPlaying: () => void this.keepPlaying(),
+      device: () => ({ device: this.usingTouch ? 'touch' : this.input.lastDevice, padStyle: this.input.gamepadStyle }),
     });
     this.dialogue = new DialogueBox(this.overlay, { sound: (name) => this.audio.play(name) });
     this.dialogue.onClose = () => (this.mode === 'ending' ? this.afterEndingTalk() : this.endTalk());
@@ -212,8 +218,29 @@ export class Game {
     if (this.sandbox && this.sandbox !== sandbox && this.sandbox !== this.adventure?.sandbox) this.sandbox.dispose();
     this.sandbox = sandbox;
     sandbox.setFeel(this.feel);
+    this.applyAssists();
+    this.assists.reset();
     this.view.setSandbox(sandbox);
+    this.ambience.play(sandbox.area.ambience);
     this.listenSandbox(sandbox);
+  }
+
+  /** The current settings (for tools/measure.mjs and the console). */
+  settingsValues() {
+    return settings.values;
+  }
+
+  /** The difficulty and assist settings, on the current simulation. */
+  applyAssists() {
+    const s = settings.values;
+    if (this.adventure) this.adventure.damageTaken = s.damageTaken;
+    const sb = this.sandbox;
+    if (!sb) return;
+    // The lab's training grounds stay as session 1 tuned them.
+    const adventure = Boolean(this.adventure);
+    sb.damageTaken = adventure ? s.damageTaken : 1;
+    sb.setSlowEnemies(adventure && s.slowEnemies);
+    sb.autoLock = s.autoLock;
   }
 
   // ------------------------------------------------------------------ the adventure
@@ -242,6 +269,8 @@ export class Game {
     }
     this.slot = slot;
     this.menus.closeAll();
+    // This playthrough's difficulty and assists come back with it.
+    if (result.settings) this.applySettings(updateSettings(result.settings));
     await this.startAdventure(result.state, result.state.area, result.state.spawn, { resume: true });
     this.play();
     this.hud.showBanner(this.adventure?.area.name ?? '', 2.2);
@@ -254,7 +283,7 @@ export class Game {
    */
   save(here = false) {
     if (!this.adventure) return false;
-    const result = this.saves.save(this.slot, this.adventure.saveData(here));
+    const result = this.saves.save(this.slot, { ...this.adventure.saveData(here), settings: { ...settings.values, keys: undefined } });
     if (!result.ok) this.hud.toast('Not saved', result.error ?? '', 'notice');
     else this.hud.flashSaved();
     return result.ok;
@@ -591,6 +620,8 @@ export class Game {
     this.audio.setVolume('master', s.masterVolume / 10);
     this.audio.setVolume('music', s.musicVolume / 10);
     this.audio.setVolume('sfx', s.sfxVolume / 10);
+    this.view?.setQuality(s.quality);
+    this.applyAssists();
     this.updateTouch();
   }
 
@@ -615,7 +646,7 @@ export class Game {
     sandbox.events.on('roar', () => this.hud.showBanner('The Warden roars! Cindermites crawl out of the ash.', 3));
     sandbox.events.on('hit', (d) => {
       if (!d.killed || d.target.def?.brain !== 'warden') return;
-      this.music.play(MUSIC.victory);
+      this.music.play(MUSIC.victory, { loop: false, then: sandbox.area.music });
       this.hud.showBanner('The Cinder Warden crumbles. Something glows in the ash.', 4);
     });
     if (sandbox.area.id !== 'training') return;
@@ -685,14 +716,15 @@ export class Game {
     if (button(frame, 'pause').pressed) return void this.pause();
     if (button(frame, 'lab').pressed) this.toggleLab();
     if (button(frame, 'debug').pressed) this.setShow({ ...this.show, perf: !this.show.perf, colliders: !this.show.perf });
+    const played = this.assists.apply(frame, settings.values, Boolean(this.sandbox.lockTarget));
     if (this.adventure) {
-      this.adventure.step(frame, dt);
+      this.adventure.step(played, dt);
       if (this.reviveTimer > 0) {
         this.reviveTimer -= dt;
         if (this.reviveTimer <= 0) void this.travel('', '', { respawn: true });
       }
     } else {
-      this.sandbox.step(frame);
+      this.sandbox.step(played);
     }
   }
 

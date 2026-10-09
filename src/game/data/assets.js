@@ -1,3 +1,5 @@
+import musicFiles from 'virtual:music-tracks';
+
 /**
  * Every file the game loads, with its size in bytes (for an honest loading
  * bar). tests/assetManifest.test.js checks that each file exists, that its
@@ -68,22 +70,27 @@ export const MODELS = {
 };
 
 /**
- * Music tracks the game may request, as `public/music/<name>.ogg`. Empty
- * until Robert adds his tracks (docs/ASSETS-TODO.md): only listed names are
- * ever fetched, so there are no failing requests meanwhile.
+ * Music tracks the game may request: whatever `public/music/<name>.ogg`
+ * files exist when the game is built (vite.config.js lists them). Only these
+ * names are ever fetched, so a missing track is silence, not a failed
+ * request. docs/AUDIO.md lists the names the game uses.
  * @type {string[]}
  */
-export const MUSIC_TRACKS = [];
+export const MUSIC_TRACKS = musicFiles;
 
 /**
- * Tracks that aren't tied to an area (each area names its own: data/areas/).
- * Silence if a file isn't there. docs/AUDIO.md lists every name.
+ * Tracks that aren't tied to an area (each area names its own in
+ * data/areas/: village, dungeon). Silence if a file isn't there.
+ * docs/AUDIO.md lists every name, with lengths and loop points.
  */
 export const MUSIC = {
   title: 'title',
   boss: 'boss',
   victory: 'victory',
 };
+
+/** Every track name the game asks for (docs/AUDIO.md; tests check the two agree). */
+export const MUSIC_NAMES = ['title', 'village', 'dungeon', 'boss', 'victory'];
 
 /** The knight's meshes to show; the pack's other weapons and shields are hidden. */
 export const KNIGHT_SHOWN = ['1H_Sword', 'Round_Shield'];

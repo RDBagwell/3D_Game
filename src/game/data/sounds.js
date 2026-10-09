@@ -1,4 +1,4 @@
-import { noise, tone } from '../../engine/index.js';
+import { noise, tone, noiseBuffer } from '../../engine/index.js';
 
 /**
  * Every sound effect, as a Web Audio recipe (see src/engine/audio/synth.js).
@@ -162,6 +162,12 @@ export const SOUNDS = {
       tone(ctx, out, t + 0.05, { type: 'triangle', from: 880, duration: 0.08, volume: 0.25 });
     },
   },
+  step_sand: {
+    volume: 0.4,
+    recipe: (ctx, out, t, rng) => {
+      noise(ctx, out, t, { duration: 0.11, filter: 'highpass', from: 2200 + rng() * 500, to: 1400, volume: 0.35, attack: 0.01 });
+    },
+  },
   // ---- The adventure.
   talk: {
     volume: 0.35,
@@ -295,4 +301,66 @@ export const SOUNDS = {
 };
 
 /** Surfaces that have their own footstep sound. */
-export const SURFACES = ['grass', 'dirt', 'stone', 'wood'];
+export const SURFACES = ['grass', 'dirt', 'stone', 'wood', 'sand'];
+
+/**
+ * Ambient beds, one per kind of place (each area names its own:
+ * data/areas/). Built from looping filtered noise and slow swells; see
+ * src/engine/audio/Ambience.js.
+ *
+ *   shore   waves rolling in and out, a breeze
+ *   meadow  soft wind (the training grounds)
+ *   halls   a low cave hum, slow air, and now and then a drip
+ * @type {Record<string, import('../../engine/audio/Ambience.js').Bed>}
+ */
+export const AMBIENCE = {
+  shore: (ctx, out) => {
+    const stops = [swell(ctx, out, { filter: 'lowpass', freq: 520, rate: 0.11, depth: 0.8, level: 0.55 }), swell(ctx, out, { filter: 'highpass', freq: 3500, rate: 0.05, depth: 0.5, level: 0.08 })];
+    return () => stops.forEach((s) => s());
+  },
+  meadow: (ctx, out) => swell(ctx, out, { filter: 'bandpass', freq: 700, rate: 0.07, depth: 0.7, level: 0.25, q: 0.7 }),
+  halls: (ctx, out) => {
+    const stops = [swell(ctx, out, { filter: 'lowpass', freq: 160, rate: 0.04, depth: 0.3, level: 0.6 }), swell(ctx, out, { filter: 'bandpass', freq: 420, rate: 0.09, depth: 0.6, level: 0.06, q: 2 })];
+    // A drip every few seconds, somewhere in the dark.
+    const drip = () => {
+      const t = ctx.currentTime;
+      tone(ctx, out, t, { type: 'sine', from: 1400 + Math.random() * 600, to: 700, duration: 0.09, volume: 0.06 });
+      timer = setTimeout(drip, 2500 + Math.random() * 4000);
+    };
+    let timer = setTimeout(drip, 2000);
+    return () => {
+      clearTimeout(timer);
+      stops.forEach((s) => s());
+    };
+  },
+};
+
+/**
+ * Looping noise through a filter, its loudness swelling slowly up and down.
+ * @param {AudioContext} ctx
+ * @param {AudioNode} out
+ * @param {{ filter: BiquadFilterType, freq: number, rate: number, depth: number, level: number, q?: number }} o
+ */
+function swell(ctx, out, { filter, freq, rate, depth, level, q = 1 }) {
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx);
+  source.loop = true;
+  const f = ctx.createBiquadFilter();
+  f.type = filter;
+  f.frequency.value = freq;
+  f.Q.value = q;
+  const gain = ctx.createGain();
+  gain.gain.value = level * (1 - depth / 2);
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = rate;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = (level * depth) / 2;
+  lfo.connect(lfoGain).connect(gain.gain);
+  source.connect(f).connect(gain).connect(out);
+  source.start();
+  lfo.start();
+  return () => {
+    source.stop();
+    lfo.stop();
+  };
+}

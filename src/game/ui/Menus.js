@@ -33,6 +33,7 @@ import { settings, updateSettings, keysFor, keyLabel, rebindKey } from '../setti
  * @property {() => void} [saveAndQuit]
  * @property {() => import('../content/credits.js').Credit[]} [credits]
  * @property {() => void} [keepPlaying]
+ * @property {() => { device: string, padStyle: string }} [device]  what the player is using now
  */
 
 /** @typedef {{ name: string, text: string, done: boolean, main: boolean }} QuestEntry */
@@ -403,23 +404,46 @@ export class Menus {
     const el = this.screen('settings', `
       <h2>Settings</h2>
       <div class="form">
-        <label class="row">Camera sensitivity <output></output><input type="range" name="sensitivity" min="0.25" max="3" step="0.05"></label>
-        <label class="row check"><input type="checkbox" name="invertX"> Invert camera left / right</label>
-        <label class="row check"><input type="checkbox" name="invertY"> Invert camera up / down</label>
-        <label class="row check"><input type="checkbox" name="reducedMotion"> Reduced motion <small>(no camera shake or nudges, softer flashes)</small></label>
-        <label class="row check"><input type="checkbox" name="captions"> Captions for sound cues</label>
-        <label class="row check"><input type="checkbox" name="hints"> Show control hints</label>
-        <label class="row">Master volume <output></output><input type="range" name="masterVolume" min="0" max="10" step="1"></label>
-        <label class="row">Music volume <output></output><input type="range" name="musicVolume" min="0" max="10" step="1"></label>
-        <label class="row">Effects volume <output></output><input type="range" name="sfxVolume" min="0" max="10" step="1"></label>
-        <label class="row">On-screen touch controls
-          <select name="touch"><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></select></label>
+        <fieldset><legend>Audio</legend>
+          <label class="row">Master volume <output></output><input type="range" name="masterVolume" min="0" max="10" step="1"></label>
+          <label class="row">Music volume <output></output><input type="range" name="musicVolume" min="0" max="10" step="1"></label>
+          <label class="row">Effects volume <output></output><input type="range" name="sfxVolume" min="0" max="10" step="1"></label>
+        </fieldset>
+        <fieldset><legend>Camera</legend>
+          <label class="row">Camera sensitivity <output></output><input type="range" name="sensitivity" min="0.25" max="3" step="0.05"></label>
+          <label class="row check"><input type="checkbox" name="invertX"> Invert camera left / right</label>
+          <label class="row check"><input type="checkbox" name="invertY"> Invert camera up / down</label>
+        </fieldset>
+        <fieldset><legend>Controls</legend>
+          <label class="row">Shield
+            <select name="shieldMode"><option value="hold">Hold the button</option><option value="toggle">Press to raise / lower</option></select></label>
+          <label class="row">Lock-on
+            <select name="lockMode"><option value="toggle">Press to lock / let go</option><option value="hold">Locked while held</option></select></label>
+          <label class="row">On-screen touch controls
+            <select name="touch"><option value="auto">Auto</option><option value="on">On</option><option value="off">Off</option></select></label>
+        </fieldset>
+        <fieldset><legend>Accessibility and difficulty</legend>
+          <label class="row">Damage you take
+            <select name="damageTaken"><option value="1">Full (as designed)</option><option value="0.75">Three quarters</option><option value="0.5">Half</option></select></label>
+          <label class="row check"><input type="checkbox" name="slowEnemies"> Slower enemies <small>(longer wind-ups, slower feet)</small></label>
+          <label class="row check"><input type="checkbox" name="autoLock"> Auto lock-on <small>(locks on to an enemy that comes for you)</small></label>
+          <label class="row">Dialogue text speed
+            <select name="textSpeed"><option value="slow">Slow</option><option value="normal">Normal</option><option value="fast">Fast</option><option value="instant">Instant</option></select></label>
+          <label class="row check"><input type="checkbox" name="reducedMotion"> Reduced motion <small>(no camera shake or nudges, softer flashes)</small></label>
+          <label class="row check"><input type="checkbox" name="captions"> Captions for sound cues</label>
+          <label class="row check"><input type="checkbox" name="hints"> Show control hints</label>
+        </fieldset>
+        <fieldset><legend>Graphics</legend>
+          <label class="row">Quality
+            <select name="quality"><option value="low">Low (no shadows, shorter view)</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+        </fieldset>
       </div>
       <nav><button data-do="back">Back</button></nav>`);
     for (const input of el.querySelectorAll('input, select')) {
       const field = /** @type {HTMLInputElement} */ (input);
       const name = /** @type {keyof import('../settings.js').Settings} */ (field.name);
       const output = field.parentElement?.querySelector('output');
+      const numeric = field.type === 'range' || name === 'damageTaken';
       const show = () => {
         if (output) output.textContent = name === 'sensitivity' ? `${Number(field.value).toFixed(2)}×` : field.value;
       };
@@ -427,7 +451,7 @@ export class Menus {
       else field.value = String(s[name]);
       show();
       field.addEventListener('input', () => {
-        const value = field.type === 'checkbox' ? field.checked : field.tagName === 'SELECT' ? field.value : Number(field.value);
+        const value = field.type === 'checkbox' ? field.checked : numeric ? Number(field.value) : field.value;
         show();
         this.actions.applySettings(updateSettings({ [name]: value }));
       });
@@ -438,12 +462,20 @@ export class Menus {
   // ---------------------------------------------------------------- controls
 
   controlsScreen() {
+    const { device, padStyle } = this.actions.device?.() ?? { device: 'keyboard', padStyle: 'xbox' };
+    const intro = {
+      keyboard: 'You\'re on keyboard and mouse: click the game to steer the camera with the mouse. Keys can be changed: choose <b>Change</b>, then press the new key (Esc cancels).',
+      gamepad: `You're on a gamepad (${padStyle === 'playstation' ? 'PlayStation' : padStyle === 'nintendo' ? 'Switch' : 'Xbox'} layout). Any pad with the standard layout works: Xbox, PlayStation, Switch Pro and most others.`,
+      touch: 'You\'re on a touch screen: the left thumb moves (the stick appears where you touch), dragging on the right turns the camera, and the buttons on the right do the rest.',
+    }[/** @type {'keyboard' | 'gamepad' | 'touch'} */ (device)] ?? '';
     const el = this.screen('controls', `
       <h2>Controls</h2>
-      <p class="note">Keyboard keys can be changed: choose <b>Change</b>, then press the new key (Esc cancels).
-      Gamepads use the standard layout (Xbox, PlayStation, Switch Pro and most others). On a touch screen, the left
-      thumb moves (the stick appears where you touch), dragging on the right turns the camera, and the buttons do the rest.</p>
-      <table class="controls-table"><thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th></th></tr></thead><tbody></tbody></table>
+      <p class="note">${intro}</p>
+      ${device === 'touch' ? `<ul class="touch-legend">
+        <li><b>Left thumb</b> move</li><li><b>Drag on the right</b> camera</li><li><b>Attack</b> attack (tap again to combo)</li>
+        <li><b>Roll</b> roll</li><li><b>Shield</b> hold to block</li><li><b>Lock</b> lock on</li><li><b>Use</b> talk, open, use</li>
+        <li><b>Tonic</b> drink a tonic</li><li><b>II</b> pause</li><li><b>Lab</b> the game-feel lab</li></ul>` : ''}
+      <table class="controls-table device-${device}"><thead><tr><th>Action</th><th>Keyboard</th><th>Gamepad</th><th></th></tr></thead><tbody></tbody></table>
       <p class="status" aria-live="polite"></p>
       <nav><button data-do="reset-keys">Reset keys</button><button data-do="back">Back</button></nav>`);
     const tbody = /** @type {HTMLElement} */ (el.querySelector('tbody'));
@@ -534,6 +566,17 @@ export class Menus {
       active.value = String(Number(active.value) + (x > 0 ? step : -step));
       active.dispatchEvent(new Event('input'));
       this.padRepeat = 8;
+    }
+    // Drop-downs: left / right steps through the options.
+    if (active?.tagName === 'SELECT' && Math.abs(x) > 0.5 && this.padRepeat === 0) {
+      const select = /** @type {HTMLSelectElement} */ (/** @type {unknown} */ (active));
+      const i = Math.max(0, Math.min(select.options.length - 1, select.selectedIndex + (x > 0 ? 1 : -1)));
+      if (i !== select.selectedIndex) {
+        select.selectedIndex = i;
+        select.dispatchEvent(new Event('input'));
+        this.actions.sound('ui_move');
+      }
+      this.padRepeat = 12;
     }
     if (button(frame, 'interact').pressed) active?.click();
     if (button(frame, 'roll').pressed && this.current !== 'title') this.back();

@@ -106,11 +106,13 @@ runs.
 | File | What | Source | Licence | Status |
 | --- | --- | --- | --- | --- |
 | `public/favicon.svg` | Sword over an orange disc | Drawn for this project | Project's own | keep |
-| Sound effects | Sword swings, hits, blocks, roll, footsteps per surface (grass, dirt, stone, wood), lock-on, enemy wind-up, UI | Synthesised at runtime with Web Audio (`src/game/data/sounds.js`) | Project's own | keep |
+| Sound effects and ambience | Combat, footsteps per surface (grass, dirt, stone, wood, sand), wind-ups, the boss, the world, UI; looping ambient beds per area (docs/AUDIO.md) | Synthesised at runtime with Web Audio (`src/game/data/sounds.js`) | Project's own | keep |
 | Training grounds | Ground, ramp, steps, walls, platforms | Built from boxes in code (`src/game/scenes/trainingGrounds.js`) | Project's own | keep |
+| Cinder Cove and the Hearth Halls | Layout, ground, cliffs, dock, sea, paths; the dungeon's rooms from KayKit modules | Data in `src/game/data/areas/`, built by `src/game/world/buildArea.js` | Project's own (the models are KayKit's, above) | keep |
+| Story, dialogue, quests | Emberwake's story and every line (docs/STORY.md, `src/game/data/dialogues/`) | Written for this project, set in Island RPG's world | Project's own | keep |
 | Sky, particles, HUD, lock-on reticle, touch controls | Gradient sky, hit sparks and dust, health bar, reticle, on-screen buttons | Drawn in code (shaders, canvas, CSS) | Project's own | keep |
 | UI font | The system font (`system-ui`) | The player's operating system | Not shipped | keep |
-| `public/music/*.ogg` | Not there yet: Robert's original music goes here (see [docs/ASSETS-TODO.md](docs/ASSETS-TODO.md)) | Robert Bagwell | Project's own | to do |
+| `public/music/*.ogg` | Not there yet: Robert's original music goes here, five tracks (see [docs/AUDIO.md](docs/AUDIO.md)) | Robert Bagwell | Project's own | to do |
 
 ## Credits
 

@@ -82,7 +82,8 @@ export const village = {
     { name: 'gate_alcove_back', size: [6, 10, 1], at: [0, 5, -42], material: 'cliff' },
     { name: 'gate_steps', size: [4, 0.3, 6], at: [0, 0.15, -38], material: 'stone' },
     // The edge of the island: invisible walls in the shallows.
-    { name: 'edge_s', size: [80, 4, 1], at: [0, 2, 40.5], material: 'water', collide: true, shadow: false, hidden: true },
+    { name: 'edge_s_w', size: [38, 4, 1], at: [-20.9, 2, 40.5], material: 'water', hidden: true },
+    { name: 'edge_s_e', size: [38, 4, 1], at: [20.9, 2, 40.5], material: 'water', hidden: true },
     { name: 'edge_w', size: [1, 4, 90], at: [-36.5, 2, 0], material: 'water', hidden: true },
     { name: 'edge_e', size: [1, 4, 90], at: [36.5, 2, 0], material: 'water', hidden: true },
     { name: 'edge_dock_w', size: [0.4, 2, 9], at: [-1.9, 1, 43], material: 'water', hidden: true },

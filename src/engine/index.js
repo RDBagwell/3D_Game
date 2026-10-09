@@ -25,6 +25,7 @@ export { Animator } from './assets/Animator.js';
 export { AssetLoader } from './assets/AssetLoader.js';
 export { AudioManager } from './audio/AudioManager.js';
 export { MusicManager } from './audio/MusicManager.js';
+export { Ambience, noiseBuffer } from './audio/Ambience.js';
 export { envelope, noise, tone } from './audio/synth.js';
 export { SaveSystem, MemoryStorage } from './save/SaveSystem.js';
 export { validateShape } from './save/validateShape.js';

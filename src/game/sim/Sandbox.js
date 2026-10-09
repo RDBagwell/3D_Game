@@ -113,6 +113,9 @@ export class Sandbox {
     this.canUseItem = () => false;
     /** Multiplies damage the player takes (the difficulty assist). */
     this.damageTaken = 1;
+    /** Lock on by itself to an enemy that has noticed you (the auto-lock assist). */
+    this.autoLock = false;
+    this.autoLockPause = 0;
     this.camera = new FollowCamera({ probe: (o, d, max, r) => physics.sphereCast(o, d, max, r) });
 
     const start = level.spawns.player[spawn] ?? level.spawns.player.start ?? { position: { x: 0, y: 0, z: 0 }, yaw: 0 };
@@ -375,10 +378,27 @@ export class Sandbox {
     const axes = this.camera.groundAxes();
     this.recenter = null;
     if (this.lockTarget && shouldBreakLock(this.lockTarget, p)) this.setLock(null);
+    if (this.autoLockPause > 0) this.autoLockPause--;
+    if (this.autoLock && !this.lockTarget && this.autoLockPause === 0) {
+      // The nearest enemy that's after you, within reach of a fight.
+      let best = null;
+      let bestD = 9;
+      for (const f of this.foes) {
+        if (!f.alive || !f.brain.aware) continue;
+        const d = Math.hypot(f.position.x - p.x, f.position.z - p.z);
+        if (d < bestD) {
+          bestD = d;
+          best = f;
+        }
+      }
+      if (best) this.setLock(best);
+    }
 
     if (button(frame, 'lockOn').pressed) {
       if (this.lockTarget) {
         this.setLock(null);
+        // Let go on purpose: don't grab another for a few seconds.
+        this.autoLockPause = 180;
       } else {
         const target = selectTarget(this.enemies, p, axes.forward);
         if (target) this.setLock(/** @type {Enemy | Dummy} */ (target));
