@@ -227,6 +227,48 @@ on is a **backstep**: an 18-frame hop straight back that covers less ground
 than a roll and recovers sooner (`PLAYER.backstep`). Its invulnerability is
 the lab's setting, capped at 8 frames.
 
+### More than one combo
+
+**The problem.** One three-hit string, whatever you were doing, makes every
+fight the same rhythm.
+
+**Here.** What a press starts depends on what the hero was doing
+(`Player.opener`). All are data in `attacks.js`:
+
+| Situation | Attack | Why |
+| --- | --- | --- |
+| Standing or walking | Slash → return slash → chop | The basic string |
+| Running flat out (above 80% of top speed) | **Running thrust**: long lunge, keeps your momentum | Closing the gap is an attack in itself |
+| Out of the end of a roll | **Rolling sweep**: quick (5 frames), wide | Roll past a swing and punish it |
+| A pause before the third press | **Thrust** instead of the chop: longer reach, narrower | A choice between a wide finisher and a long one |
+| Holding attack through a swing | **Charge**: the sword draws back; after 0.5 s it glows and hums. Let go to swing the **charged chop** (26 damage, breaks most guards' poise) | A big hit you have to make room for |
+| Attack with the shield up | **Shield bash**: little damage, but it goes through a guard and breaks it | The answer to a turtling grunt |
+
+The pause window runs from 8 frames after the chain point to 15 frames
+after the return slash ends (`PLAYER.combo`). The thrust, the running thrust
+and the bash have measured `animImpact`s like the other swings; the bash's
+is measured from the shield, not the sword.
+
+### Parry and chip damage
+
+**The problem.** A shield that blocks everything for free makes holding it
+the best move, and the fight stalls.
+
+**Here.**
+- **Chip damage:** a blocked blow still costs 12% of its damage, never the
+  last hit point. Arrows and embers don't chip.
+- **Parry:** raise the shield in the 8 frames before a blow lands and it's
+  parried. A melee attacker is thrown off balance (staggered) and you take
+  nothing. A bolt goes back at whoever threw it, curving after them, and
+  hits for 1.5× its damage.
+- **No tapping:** raising the shield again within 0.5 s of lowering it gives
+  no parry window.
+- **Turning while blocking:** not locked on, the shield turns with the camera,
+  so you can face a new threat without lowering it.
+
+There's no stamina bar. Chip damage and the parry are what give blocking a
+cost and a skill (`PLAYER.blockChip`, `PLAYER.parry`).
+
 ### Attack-cancel windows
 
 **The problem.** If every swing must play out in full, committing to an attack
@@ -246,9 +288,17 @@ fault.
 
 **Here.** When a swing starts, the hero turns towards the closest enemy within
 3.2 m that is roughly ahead, by up to 75° × the setting (`Player.aimAssist`).
-While locked on, attacks always face the target. The assist only acts at the
-start of a swing, never during it, so it doesn't feel like the game is
-playing for you.
+Through the swing's wind-up it keeps turning after that enemy, at up to
+300°/s × the setting, so a sidestep doesn't dodge a swing that had already
+found its target. Once the blade is moving it stops, so it doesn't feel like
+the game is playing for you. While locked on, attacks always face the target.
+The numbers are data (`PLAYER.aimAssist`).
+
+**Lock-on and walls.** A target behind a wall, a pillar or a closed gate
+can't be locked on to (a ray from the hero's eyes to its chest). A locked
+target that stays hidden for 0.75 s lets go. When your target falls, the lock
+moves to the next enemy in sight nearest that direction, so a fight keeps
+its flow instead of dropping you back to free camera.
 
 | Setting | Polished | Range | Trade-off |
 | --- | --- | --- | --- |
@@ -493,6 +543,10 @@ Each of these is checked at the moment it fires
 | **Positional sound** | Sounds come from their position (HRTF), the listener is the camera | You can hear a grunt winding up behind you |
 | **Footsteps by surface** | Grass, dirt, stone and wood sound different, from the level's `area_*` zones | The world feels like it has materials; off, every step is the same tap |
 | **Controller rumble** | Short dual-motor pulses on hits, stronger when you're hit | Touch feedback; only where the browser and pad support `vibrationActuator` |
+| **Low-health warning** | Below 30% health the screen's edges darken red, more as it drops, with a soft heartbeat that quickens | You notice you're in danger without looking at the bar |
+| **Hit direction** | When you're hit, a red arc on a ring round the middle of the screen points to where it came from | Hits from behind are no longer a mystery |
+| **Merged numbers** | Damage numbers on the same target within 0.6 s add up into one number, which pops as it grows | A combo reads as one total instead of a pile of numbers |
+| **Parry and charge** | A bright ring, sparks and "Parried!"; a glowing, humming blade at full charge | The two skill moves announce themselves |
 
 ---
 

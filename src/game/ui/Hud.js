@@ -34,12 +34,17 @@ const HINT_ACTIONS = [
   ['pause', 'Pause'],
 ];
 
+/** Health fraction at or below which the low-health warning shows. */
+const LOW_HEALTH = 0.3;
+
 export class Hud {
   /** @param {HTMLElement} container */
   constructor(container) {
     this.root = document.createElement('div');
     this.root.className = 'hud';
     this.root.innerHTML = `
+      <div class="danger" aria-hidden="true"></div>
+      <div class="hit-arcs" aria-hidden="true"></div>
       <div class="health" role="meter" aria-label="Health" aria-valuemin="0">
         <div class="health-label">Vigor</div>
         <div class="health-bar"><div class="health-ghost"></div><div class="health-fill"></div><div class="health-text"></div></div>
@@ -56,6 +61,14 @@ export class Hud {
       <div class="captions" aria-live="polite"></div>
       <div class="hints"></div>`;
     container.append(this.root);
+    /** Seconds to the next heartbeat while health is low; heartDue says when one is due (Game plays it). */
+    this.heartTimer = 0;
+    this.heartDue = false;
+    this.dangerEl = /** @type {HTMLElement} */ (this.root.querySelector('.danger'));
+    /** The low-health vignette's current strength (eased towards its target). */
+    this.dangerLevel = 0;
+    /** Hit-direction arcs on screen, fading. @type {{ el: HTMLElement, age: number }[]} */
+    this.arcs = [];
     this.fill = /** @type {HTMLElement} */ (this.root.querySelector('.health-fill'));
     this.ghost = /** @type {HTMLElement} */ (this.root.querySelector('.health-ghost'));
     this.text = /** @type {HTMLElement} */ (this.root.querySelector('.health-text'));
@@ -165,6 +178,14 @@ export class Hud {
    */
   updateHealth(dt, player) {
     const v = Math.max(0, player.hp / player.maxHp);
+    // Low health: the screen's edges darken red, more the lower it gets.
+    const danger = player.hp > 0 && v <= LOW_HEALTH ? 0.35 + 0.65 * (1 - v / LOW_HEALTH) : 0;
+    // Eased here rather than by a CSS transition, so it follows the game's clock.
+    this.dangerLevel += (danger - this.dangerLevel) * Math.min(1, dt * 5);
+    this.dangerEl.style.opacity = this.dangerLevel.toFixed(3);
+    this.heartTimer -= dt;
+    this.heartDue = danger > 0 && this.heartTimer <= 0;
+    if (this.heartDue) this.heartTimer = 1.1 - 0.4 * (1 - v / LOW_HEALTH); // faster as it drops
     this.fill.style.width = `${v * 100}%`;
     this.fill.classList.toggle('low', v <= 0.3);
     // The ghost waits, then drains towards the real value.
@@ -174,6 +195,25 @@ export class Hud {
     this.text.textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
     this.meter.setAttribute('aria-valuenow', String(Math.ceil(player.hp)));
     this.meter.setAttribute('aria-valuemax', String(player.maxHp));
+  }
+
+  /**
+   * Show where a hit came from: an arc on the edge of the screen, in that
+   * direction (0 = straight ahead, the top; positive = clockwise), fading
+   * out over most of a second.
+   * @param {number} angle  radians
+   */
+  hitFrom(angle) {
+    const layer = /** @type {HTMLElement} */ (this.root.querySelector('.hit-arcs'));
+    const arc = document.createElement('i');
+    // On a ring round the middle of the screen, curved side outwards.
+    const r = Math.min(window.innerWidth, window.innerHeight) * 0.34;
+    arc.style.left = `${Math.sin(angle) * r}px`;
+    arc.style.top = `${-Math.cos(angle) * r}px`;
+    arc.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
+    layer.append(arc);
+    this.arcs.push({ el: arc, age: 0 });
+    while (this.arcs.length > 4) this.arcs.shift()?.el.remove();
   }
 
   /**
@@ -231,6 +271,16 @@ export class Hud {
 
   /** @param {number} dt */
   tick(dt) {
+    // Hit arcs fade out over 0.9 s.
+    this.arcs = this.arcs.filter((a) => {
+      a.age += dt;
+      if (a.age >= 0.9) {
+        a.el.remove();
+        return false;
+      }
+      a.el.style.opacity = (1 - a.age / 0.9).toFixed(3);
+      return true;
+    });
     if (this.savedTimer > 0) {
       this.savedTimer -= dt;
       if (this.savedTimer <= 0) this.saved.hidden = true;

@@ -75,6 +75,31 @@ export const PLAYER = {
   blockHalfAngle: 65,
   /** Push back when blocking, as a fraction of the attack's knockback. */
   blockPush: 0.45,
+  /**
+   * Blocking isn't free: a blocked blow still takes this fraction of its
+   * damage (chip damage, never the last hit point). Arrows and embers don't.
+   */
+  blockChip: 0.12,
+  /** Shield up and not locked on, the hero turns to face where the camera looks, this fast (deg/s). */
+  shieldTurnSpeed: 360,
+  /**
+   * The parry: the first frames of raising the shield. A blow that lands in
+   * them staggers the attacker, and a bolt goes back where it came from.
+   * Raising it again soon after lowering it gives no window (no tapping).
+   */
+  parry: { window: 8, cooldown: 30, hitstop: 8 },
+  /** Combos: a press this many frames late (or just after the attack ends) takes `pauseNext`. */
+  combo: { pauseFrom: 8, pauseWindow: 15 },
+  /** Attacking out of a run faster than this fraction of runSpeed is a running thrust. */
+  dashFrom: 0.8,
+  /** Holding attack through a swing charges the sword: frames to full, and walking speed meanwhile. */
+  charge: { frames: 30, walkSpeed: 2 },
+  /**
+   * Aim assist (the lab's strength scales the turn): enemies within `range`
+   * metres and `maxTurnDeg` of where you swing pull the swing towards them,
+   * and keep pulling through the wind-up at `trackDegPerSec`.
+   */
+  aimAssist: { range: 3.2, maxTurnDeg: 75, trackDegPerSec: 300 },
   /** Frames on the floor after a knockdown, then getting up (invulnerable throughout). */
   knockdownFrames: 64,
   /** Seconds before respawning in the training grounds. */

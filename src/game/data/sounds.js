@@ -59,6 +59,31 @@ export const SOUNDS = {
       noise(ctx, out, t, { duration: 0.12, filter: 'lowpass', from: 2000, to: 400, volume: 0.6 });
     },
   },
+  parry: {
+    caption: '[Parried]',
+    volume: 0.9,
+    recipe: (ctx, out, t) => {
+      // A bright, clean ring, higher and longer than a block.
+      for (const [f, v] of [[880, 0.3], [1320, 0.2], [2640, 0.1]]) tone(ctx, out, t, { type: 'sine', from: f, duration: 0.6, volume: v });
+      noise(ctx, out, t, { duration: 0.05, filter: 'highpass', from: 4000, volume: 0.6 });
+    },
+  },
+  charged: {
+    caption: '[The sword hums, charged]',
+    volume: 0.6,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'triangle', from: 330, to: 660, duration: 0.35, volume: 0.22, attack: 0.05 });
+      tone(ctx, out, t + 0.12, { type: 'sine', from: 990, duration: 0.3, volume: 0.15 });
+    },
+  },
+  heartbeat: {
+    volume: 0.7,
+    recipe: (ctx, out, t) => {
+      // Lub-dub: two soft, low thumps.
+      tone(ctx, out, t, { type: 'sine', from: 70, to: 45, duration: 0.12, volume: 0.5 });
+      tone(ctx, out, t + 0.18, { type: 'sine', from: 60, to: 40, duration: 0.14, volume: 0.35 });
+    },
+  },
   block: {
     volume: 0.8,
     recipe: (ctx, out, t, rng) => {

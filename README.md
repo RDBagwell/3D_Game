@@ -62,9 +62,9 @@ from the front, or step out of reach, then punish the recovery.
 | --- | --- | --- | --- |
 | Move | WASD | Left stick / d-pad | Left thumb (the stick appears where you touch) |
 | Camera | Mouse (click the game first) / arrow keys | Right stick | Drag on the right |
-| Attack (press again to combo) | J / left click | X / □ or RB / R1 | Attack |
+| Attack (press again to combo; pause before the third for a thrust; hold through a swing to charge) | J / left click | X / □ or RB / R1 | Attack |
 | Roll | Space / K | B / ○ | Roll |
-| Shield | L / right click (hold, or toggle in Settings) | LB / L1 or LT / L2 | Shield |
+| Shield (raise it as a blow lands to parry; attack with it up to bash) | L / right click (hold, or toggle in Settings) | LB / L1 or LT / L2 | Shield |
 | Lock on / switch target / recentre | Q / middle click; flick the camera to switch | RT / R2 or R3; flick the right stick | Lock |
 | Talk, open, use | E | A / ✕ | Use |
 | Drink a tonic (quick slot) | R | Y / △ | Tonic |

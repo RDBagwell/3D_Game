@@ -32,6 +32,11 @@
  *   next         the attack a buffered press chains into (a combo), if any
  *   chainFrom    first frame the next attack may start (presses up to the
  *                lab's "combo buffer" frames earlier still count)
+ *   pauseNext    the attack a press chains into after a pause instead (a press
+ *                late in this attack's recovery, or just after it ends:
+ *                PLAYER.combo.pauseWindow)
+ *   guardBreak   true: a blocked hit still lands and breaks the target's guard
+ *                (the shield bash)
  *   rollCancelFrom  first frame a roll may interrupt the attack, when the lab's
  *                "attack-cancel windows" is on; otherwise only after `total`
  *   anim         the animation clip
@@ -65,6 +70,8 @@
  * @property {number} lunge
  * @property {{ reach: number, radius: number, height: number, arcFrom: number, arcTo: number }} hitbox
  * @property {string | null} next
+ * @property {string} [pauseNext]
+ * @property {boolean} [guardBreak]
  * @property {number} chainFrom
  * @property {number} rollCancelFrom
  */
@@ -106,6 +113,8 @@ export const ATTACKS = {
     lunge: 2.6,
     hitbox: { reach: 1.1, radius: 0.5, height: 1.0, arcFrom: 55, arcTo: -50 },
     next: 'slash3',
+    // Pause before the third press and it's a thrust instead of the chop.
+    pauseNext: 'thrust',
     chainFrom: 12,
     rollCancelFrom: 11,
   },
@@ -128,6 +137,112 @@ export const ATTACKS = {
     next: null,
     chainFrom: 999,
     rollCancelFrom: 19,
+  },
+
+  // The hero's other openers and finishers (Phase 3 of docs/ROADMAP.md).
+  // Which one starts depends on what the hero was doing: Player.opener.
+
+  // Attacking out of a full run: a lunging thrust that keeps your momentum.
+  dashSlash: {
+    name: 'Running thrust',
+    anim: '1H_Melee_Attack_Stab',
+    animImpact: 0.242,
+    startup: 8,
+    active: 5,
+    recovery: 20,
+    damage: 11,
+    poise: 14,
+    knockback: 4,
+    hitstun: 20,
+    hitstop: 6,
+    shake: 0.3,
+    lunge: 6,
+    hitbox: { reach: 1.3, radius: 0.45, height: 1.0, arcFrom: -10, arcTo: 10 },
+    next: 'slash2',
+    chainFrom: 15,
+    rollCancelFrom: 13,
+  },
+  // Attacking out of the end of a roll: a quick, wide sweep.
+  rollSlash: {
+    name: 'Rolling sweep',
+    anim: '1H_Melee_Attack_Slice_Horizontal',
+    animImpact: 0.233,
+    startup: 5,
+    active: 4,
+    recovery: 18,
+    damage: 9,
+    poise: 10,
+    knockback: 3,
+    hitstun: 16,
+    hitstop: 5,
+    shake: 0.24,
+    lunge: 3.2,
+    hitbox: { reach: 1.1, radius: 0.5, height: 1.0, arcFrom: 70, arcTo: -60 },
+    next: 'slash2',
+    chainFrom: 11,
+    rollCancelFrom: 11,
+  },
+  // Pausing before the third hit: a long thrust instead of the chop.
+  thrust: {
+    name: 'Thrust',
+    anim: '1H_Melee_Attack_Stab',
+    animImpact: 0.242,
+    startup: 10,
+    active: 5,
+    recovery: 22,
+    damage: 14,
+    poise: 24,
+    knockback: 7,
+    hitstun: 24,
+    hitstop: 8,
+    shake: 0.35,
+    lunge: 4.5,
+    hitbox: { reach: 1.45, radius: 0.45, height: 1.0, arcFrom: -8, arcTo: 8 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 16,
+  },
+  // Holding attack through a swing charges the sword; letting go swings it.
+  chargeChop: {
+    name: 'Charged chop',
+    anim: '1H_Melee_Attack_Chop',
+    animImpact: 0.508,
+    startup: 6,
+    active: 6,
+    recovery: 26,
+    damage: 26,
+    poise: 40,
+    knockback: 8,
+    hitstun: 30,
+    hitstop: 10,
+    shake: 0.5,
+    lunge: 3.5,
+    hitbox: { reach: 1.3, radius: 0.65, height: 1.0, arcFrom: -40, arcTo: 40 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 18,
+  },
+  // Attack with the shield up: a shove that breaks a blocking enemy's guard.
+  bash: {
+    name: 'Shield bash',
+    anim: 'Block_Attack',
+    // Measured from the shield's far edge, not the sword.
+    animImpact: 0.325,
+    startup: 6,
+    active: 4,
+    recovery: 18,
+    damage: 4,
+    poise: 30,
+    knockback: 5,
+    hitstun: 18,
+    hitstop: 6,
+    shake: 0.3,
+    lunge: 3,
+    guardBreak: true,
+    hitbox: { reach: 0.9, radius: 0.55, height: 1.0, arcFrom: -30, arcTo: 30 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 14,
   },
 
   // The grunt's only attack. Its long startup is the telegraph: a clear

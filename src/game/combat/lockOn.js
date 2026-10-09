@@ -13,7 +13,11 @@ import { DEG } from '../../engine/index.js';
  * locked moves to the nearest target on that side, measured by angle around
  * the player as seen from the camera.
  *
- * Breaking: the lock lets go when the target dies or gets too far away.
+ * Breaking: the lock lets go when the target dies or gets too far away,
+ * or stays hidden behind a wall for longer than `losGrace` frames.
+ *
+ * Seeing: a target behind a wall (or a closed gate) can't be picked; the
+ * caller passes `canSee` (a ray against the level).
  */
 
 /** @typedef {{ id: string, position: { x: number, y: number, z: number }, alive: boolean }} Lockable */
@@ -27,6 +31,8 @@ export const LOCK = {
   breakDistance: 18,
   /** How much a metre of distance counts against a target, compared with a radian of angle. */
   distanceWeight: 0.06,
+  /** Frames a locked target may stay out of sight (behind a pillar) before the lock lets go. */
+  losGrace: 45,
 };
 
 /**
@@ -34,14 +40,15 @@ export const LOCK = {
  * @param {{ x: number, z: number }} from  the player's position
  * @param {{ x: number, z: number }} cameraForward  normalised, on the ground plane
  * @param {Partial<typeof LOCK>} [limits]
+ * @param {(c: Lockable) => boolean} [canSee]  false for targets behind walls
  * @returns {Lockable | null}
  */
-export function selectTarget(candidates, from, cameraForward, limits = {}) {
+export function selectTarget(candidates, from, cameraForward, limits = {}, canSee = () => true) {
   const { maxDistance, maxAngleDeg, distanceWeight } = { ...LOCK, ...limits };
   let best = null;
   let bestScore = Infinity;
   for (const c of candidates) {
-    if (!c.alive) continue;
+    if (!c.alive || !canSee(c)) continue;
     const dx = c.position.x - from.x;
     const dz = c.position.z - from.z;
     const dist = Math.hypot(dx, dz);
@@ -65,9 +72,10 @@ export function selectTarget(candidates, from, cameraForward, limits = {}) {
  * @param {{ x: number, z: number }} cameraRight  normalised, on the ground plane
  * @param {-1 | 1} direction
  * @param {Partial<typeof LOCK>} [limits]
+ * @param {(c: Lockable) => boolean} [canSee]  false for targets behind walls
  * @returns {Lockable}  the current target if there's nothing on that side
  */
-export function switchTarget(current, candidates, from, cameraRight, direction, limits = {}) {
+export function switchTarget(current, candidates, from, cameraRight, direction, limits = {}, canSee = () => true) {
   const { maxDistance } = { ...LOCK, ...limits };
   const side = (/** @type {Lockable} */ c) => {
     const dx = c.position.x - from.x;
@@ -79,7 +87,7 @@ export function switchTarget(current, candidates, from, cameraRight, direction, 
   let best = current;
   let bestGap = Infinity;
   for (const c of candidates) {
-    if (c === current || !c.alive) continue;
+    if (c === current || !c.alive || !canSee(c)) continue;
     if (Math.hypot(c.position.x - from.x, c.position.z - from.z) > maxDistance) continue;
     const gap = (side(c) - here) * direction;
     if (gap > 0.02 && gap < bestGap) {

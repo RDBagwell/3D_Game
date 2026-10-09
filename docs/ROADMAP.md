@@ -52,7 +52,7 @@ pull request with its own tests. Phases run in order; each builds on the last.
 - **Falling:** a falling state with less air control, then a landing. Below
   each area's floor you're caught and put back where you last stood.
 
-## Phase 3: combat depth
+## Phase 3: combat depth (done; see docs/GAME-FEEL.md)
 
 - **Context attacks:** a dash slash out of a run, a roll slash, a charged
   chop when attack is held, and a different third hit if you pause.

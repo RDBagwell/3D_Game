@@ -3,6 +3,9 @@ import { ATTACKS, totalFrames, PLAYER_COMBO } from '../src/game/data/attacks.js'
 import { attackPhase, hitboxAt, sphereHitsCapsule, isInFront, resolveSwing } from '../src/game/combat/hitboxes.js';
 import { Sandbox } from '../src/game/sim/Sandbox.js';
 import { defaultFeel } from '../src/game/feel/feelSettings.js';
+import { PLAYER } from '../src/game/data/actors.js';
+
+const hold = (/** @type {string} */ b) => ({ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: { [b]: { down: true, pressed: true, released: false } } });
 
 /** A combatant standing at (x, z), facing yaw. */
 function body(id, team, x, z, facing = 0, extra = {}) {
@@ -180,6 +183,57 @@ describe('combat in the sandbox', () => {
     expect(player.state).toBe('attack');
     hit(ATTACKS.gruntChop);
     expect(player.state).toBe('hitstun');
+    sb.dispose();
+  });
+
+  it('a blow caught as the shield goes up is parried: the attacker staggers and the hero takes nothing', async () => {
+    const sb = await Sandbox.create({ grunts: true });
+    const grunt = sb.grunts[0];
+    const player = sb.player;
+    const events = [];
+    sb.events.on('parry', () => events.push('parry'));
+    sb.step(hold('shield'));
+    expect(player.parrying).toBe(true);
+    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'blocked', point: { ...player.position } });
+    expect(events).toEqual(['parry']);
+    expect(player.hp).toBe(player.maxHp);
+    expect(grunt.brain.state).toBe('stagger');
+    sb.dispose();
+  });
+
+  it('a plain block costs a little chip damage, but never the last hit point', async () => {
+    const sb = await Sandbox.create({ grunts: true });
+    const grunt = sb.grunts[0];
+    const player = sb.player;
+    for (let i = 0; i < 20; i++) sb.step(hold('shield')); // past the parry window
+    expect(player.parrying).toBe(false);
+    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'blocked', point: { ...player.position } });
+    const chip = Math.max(1, Math.round(ATTACKS.gruntChop.damage * PLAYER.blockChip));
+    expect(player.hp).toBe(player.maxHp - chip);
+    player.hp = 1;
+    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'blocked', point: { ...player.position } });
+    expect(player.hp).toBe(1);
+    expect(player.alive).toBe(true);
+    sb.dispose();
+  });
+
+  it('the shield bash goes through a guard and breaks it', async () => {
+    const sb = await Sandbox.create({ grunts: true });
+    const grunt = sb.grunts[0];
+    sb.step(hold('none')); // one update, so the grunt's brain is running
+    let broken = false;
+    sb.events.on('hit', (e) => (broken = Boolean(e.guardBroken)));
+    sb.applyHit(sb.player, ATTACKS.bash, { target: grunt, result: 'blocked', point: { ...grunt.position } });
+    expect(broken).toBe(true);
+    expect(grunt.brain.state).toBe('stagger');
+    // An ordinary slash into a guard is still just blocked.
+    grunt.brain.fsm.force('circle');
+    broken = false;
+    let blocked = false;
+    sb.events.on('block', () => (blocked = true));
+    sb.applyHit(sb.player, ATTACKS.slash1, { target: grunt, result: 'blocked', point: { ...grunt.position } });
+    expect(blocked).toBe(true);
+    expect(grunt.brain.state).not.toBe('stagger');
     sb.dispose();
   });
 });

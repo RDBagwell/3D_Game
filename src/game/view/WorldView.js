@@ -373,8 +373,11 @@ export class WorldView {
         const heavy = d.target.team === 'player' ? 0.8 : d.attack.hitstop >= 6 ? 0.6 : 0.35;
         this.input.rumble(heavy, heavy * 0.6, 90 + d.attack.hitstop * 12);
       }
-      if (this.show().damage && d.target.kind === 'dummy') this.floaters.add(String(d.damage), d.point, d.attack.hitstop >= 6 ? 'big' : '');
-      else if (d.target.team === 'player' && this.show().damage) this.floaters.add(`-${d.damage}`, d.point, 'hurt');
+      // Damage numbers add up per target, rather than stacking one per hit.
+      if (this.show().damage && d.target.kind === 'dummy') this.floaters.addNumber(d.target.id, d.damage, d.point, (n) => String(n), d.attack.hitstop >= 6 ? 'big' : '');
+      else if (d.target.team === 'player' && this.show().damage) this.floaters.addNumber(d.target.id, d.damage, d.point, (n) => `-${n}`, 'hurt');
+      if (d.guardBroken) this.floaters.add('Guard broken!', { ...d.point, y: d.point.y + 0.5 }, 'note good');
+      if (d.reflected) this.floaters.add('Returned!', { ...d.point, y: d.point.y + 0.5 }, 'note good');
       if (d.counter) this.floaters.add('Counter hit', { ...d.point, y: d.point.y + 0.5 }, 'note');
       if (d.weak) this.floaters.add(`Weak point! ${d.damage}`, { ...d.point, y: d.point.y + 0.5 }, 'note good');
     });
@@ -384,6 +387,18 @@ export class WorldView {
       if (f().particles) this.particles.burst(d.point, d.direction, 10, { color: [0.6, 0.85, 1], speed: 5 });
       this.floaters.add('Blocked', { ...d.point, y: d.point.y + 0.4 }, 'note');
       this.shake.addTrauma(0.12);
+    });
+    ev.on('parry', (d) => {
+      // A bright ring and a flash of sparks: the parry is the best thing you can do, so it should feel like it.
+      play('parry', d.point);
+      if (f().particles) this.particles.burst(d.point, d.direction, 30, { color: [1, 0.95, 0.6], speed: 8 });
+      this.floaters.add('Parried!', { ...d.point, y: d.point.y + 0.5 }, 'note good big');
+      this.shake.addTrauma(0.25);
+      if (f().rumble) this.input.rumble(0.5, 0.9, 140);
+    });
+    ev.on('charged', (d) => {
+      play('charged', d.position);
+      if (f().particles) this.particles.burst({ ...d.position, y: d.position.y + 1.2 }, { x: 0, y: 1, z: 0 }, 14, { color: [1, 0.6, 0.2], speed: 2.5 });
     });
     ev.on('dodge', (d) => {
       play('dodge', d.point, 0.7);
