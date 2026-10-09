@@ -13,6 +13,12 @@
  * setVirtual / setVirtualMove / addVirtualLook, so everything that reads
  * actions works on a phone unchanged.
  *
+ * The stick and the camera drag listen to the game's own surface (the
+ * canvas) and only to fingers and pens: there is no invisible layer over the
+ * game, so on a laptop with a touchscreen the mouse keeps working (clicks
+ * reach the canvas, pointer lock works) while the touchscreen drives the
+ * stick. Only the buttons are real elements that take input.
+ *
  * It only builds DOM elements (.touch-controls, .touch-stick, .touch-button);
  * the page's CSS decides how they look.
  */
@@ -28,10 +34,12 @@
 export class TouchControls {
   /**
    * @param {import('./Input.js').Input} input
-   * @param {HTMLElement} container
-   * @param {{ buttons: TouchButton[], stickRadius?: number, lookScale?: number }} options
+   * @param {HTMLElement} container  where the buttons and the stick's picture go
+   * @param {{ buttons: TouchButton[], surface: HTMLElement, stickRadius?: number, lookScale?: number }} options
+   *        surface: the element fingers drag on (the canvas)
    */
-  constructor(input, container, { buttons, stickRadius = 56, lookScale = 1.6 }) {
+  constructor(input, container, { buttons, surface, stickRadius = 56, lookScale = 1.6 }) {
+    this.surface = surface;
     this.input = input;
     this.stickRadius = stickRadius;
     this.lookScale = lookScale;
@@ -39,17 +47,13 @@ export class TouchControls {
     this.root.className = 'touch-controls';
     this.root.hidden = true;
 
-    this.lookZone = document.createElement('div');
-    this.lookZone.className = 'touch-look-zone';
-    this.stickZone = document.createElement('div');
-    this.stickZone.className = 'touch-stick-zone';
+    // The stick's picture only: it takes no input itself.
     this.stickBase = document.createElement('div');
     this.stickBase.className = 'touch-stick';
     this.stickKnob = document.createElement('div');
     this.stickKnob.className = 'touch-stick-knob';
     this.stickBase.append(this.stickKnob);
-    this.stickZone.append(this.stickBase);
-    this.root.append(this.lookZone, this.stickZone);
+    this.root.append(this.stickBase);
 
     /** @type {Map<number, { kind: 'stick' | 'look', x: number, y: number }>} */
     this.pointers = new Map();
@@ -88,12 +92,10 @@ export class TouchControls {
     this.onDown = this.onDown.bind(this);
     this.onMove = this.onMove.bind(this);
     this.onUp = this.onUp.bind(this);
-    for (const zone of [this.stickZone, this.lookZone]) {
-      zone.addEventListener('pointerdown', this.onDown);
-      zone.addEventListener('pointermove', this.onMove);
-      zone.addEventListener('pointerup', this.onUp);
-      zone.addEventListener('pointercancel', this.onUp);
-    }
+    surface.addEventListener('pointerdown', this.onDown);
+    surface.addEventListener('pointermove', this.onMove);
+    surface.addEventListener('pointerup', this.onUp);
+    surface.addEventListener('pointercancel', this.onUp);
     container.append(this.root);
   }
 
@@ -103,6 +105,9 @@ export class TouchControls {
 
   hide() {
     this.root.hidden = true;
+    this.pointers.clear();
+    this.stickKnob.style.transform = '';
+    this.stickBase.classList.remove('active');
     this.input.setVirtualMove(0, 0);
   }
 
@@ -112,14 +117,19 @@ export class TouchControls {
 
   /** @param {PointerEvent} e */
   onDown(e) {
+    // Fingers and pens only, and only while shown: the mouse belongs to the game.
+    if (e.pointerType === 'mouse' || this.root.hidden) return;
     e.preventDefault();
-    const zone = /** @type {HTMLElement} */ (e.currentTarget);
-    zone.setPointerCapture?.(e.pointerId);
-    if (zone === this.stickZone) {
+    this.surface.setPointerCapture?.(e.pointerId);
+    const rect = this.surface.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // Left 45% of the screen, lower 65%: the stick. Anywhere else: the camera.
+    if (x < rect.width * 0.45 && y > rect.height * 0.35 && ![...this.pointers.values()].some((p) => p.kind === 'stick')) {
       this.pointers.set(e.pointerId, { kind: 'stick', x: e.clientX, y: e.clientY });
-      const rect = this.stickZone.getBoundingClientRect();
-      this.stickBase.style.left = `${e.clientX - rect.left}px`;
-      this.stickBase.style.top = `${e.clientY - rect.top}px`;
+      const box = this.root.getBoundingClientRect();
+      this.stickBase.style.left = `${e.clientX - box.left}px`;
+      this.stickBase.style.top = `${e.clientY - box.top}px`;
       this.stickBase.classList.add('active');
     } else {
       this.pointers.set(e.pointerId, { kind: 'look', x: e.clientX, y: e.clientY });
@@ -164,12 +174,21 @@ export class TouchControls {
   }
 
   destroy() {
+    this.surface.removeEventListener('pointerdown', this.onDown);
+    this.surface.removeEventListener('pointermove', this.onMove);
+    this.surface.removeEventListener('pointerup', this.onUp);
+    this.surface.removeEventListener('pointercancel', this.onUp);
     this.root.remove();
   }
 }
 
-/** True on devices whose main pointer is a finger. */
+/**
+ * True on devices whose main pointer is a finger (phones, tablets). A laptop
+ * with a touchscreen has a mouse or touchpad as its main pointer, so this is
+ * false there; the game switches to touch controls when a finger is actually
+ * used (Game.listen).
+ */
 export function isTouchDevice() {
   if (typeof window === 'undefined') return false;
-  return window.matchMedia?.('(pointer: coarse)').matches || navigator.maxTouchPoints > 1;
+  return window.matchMedia?.('(pointer: coarse)').matches ?? false;
 }

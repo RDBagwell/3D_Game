@@ -111,4 +111,45 @@ test.describe('smoke', () => {
     expect(await page.evaluate(() => /** @type {Game} */ (window).game.mode)).toBe('play');
     expect(errors).toEqual([]);
   });
+
+  for (const hasTouch of [false, true]) {
+    test(`the mouse attacks and captures the camera${hasTouch ? ' on a touchscreen laptop' : ''}`, async ({ browser }) => {
+      // A laptop with a touchscreen reports touch support; the mouse must still work.
+      const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch });
+      const page = await context.newPage();
+      const errors = collectErrors(page);
+      await openGame(page);
+      await page.getByRole('button', { name: 'Play' }).click();
+      await page.mouse.move(640, 360);
+      await page.mouse.down();
+      // Wait on game state: software rendering runs at a few frames a second.
+      await page.waitForFunction(() => /** @type {Game} */ (window).game.sandbox.player.swingId > 0, null, { timeout: 30_000 });
+      await page.mouse.up();
+      expect(await page.evaluate(() => document.pointerLockElement?.tagName)).toBe('CANVAS');
+      expect(await page.evaluate(() => /** @type {Game} */ (window).game.touch.visible)).toBe(false);
+      // Moving the captured mouse turns the camera.
+      const yaw = await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.camera.yaw);
+      await page.mouse.move(900, 360, { steps: 5 });
+      await page.waitForFunction((y) => /** @type {Game} */ (window).game.sandbox.camera.yaw !== y, yaw, { timeout: 30_000 });
+      expect(errors).toEqual([]);
+      await context.close();
+    });
+  }
+
+  test('a finger brings the touch controls up, and the stick moves the hero', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 915, height: 412 }, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    await openGame(page);
+    await page.getByRole('button', { name: 'Play' }).tap(); // a finger, not the mouse
+    await expect(page.locator('.touch-controls')).toBeVisible();
+    const start = await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.player.position.z);
+    // Drag on the lower left of the game (the stick) with a touch pointer.
+    const cdp = await context.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    await touch('touchStart', 120, 300);
+    await touch('touchMove', 120, 240);
+    await page.waitForFunction((z) => /** @type {Game} */ (window).game.sandbox.player.position.z < z - 0.5, start, { timeout: 30_000 });
+    await touch('touchEnd', 0, 0);
+    await context.close();
+  });
 });

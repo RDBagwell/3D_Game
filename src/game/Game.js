@@ -42,8 +42,14 @@ export class Game {
     this.canvas = /** @type {HTMLCanvasElement} */ (root.querySelector('canvas'));
     this.overlay = /** @type {HTMLElement} */ (root.querySelector('.overlay'));
     this.input = new Input({ bindings: bindingsFor(settings.values.keys), pointerElement: this.canvas });
-    // On a phone, show touch hints from the start (until a keyboard or pad is used).
-    if (isTouchDevice()) this.input.lastDevice = 'touch';
+    /**
+     * Whether the player is using a touchscreen right now. It starts true on
+     * phones and tablets, and follows the last pointer used, so a laptop with
+     * a touchscreen gets touch controls only while fingers are used and the
+     * mouse scheme otherwise.
+     */
+    this.usingTouch = isTouchDevice();
+    if (this.usingTouch) this.input.lastDevice = 'touch';
     this.audio = new AudioManager();
     this.audio.register(SOUNDS);
     this.audio.autoUnlock(window);
@@ -101,6 +107,7 @@ export class Game {
       sound: (name) => this.audio.play(name),
     });
     this.touch = new TouchControls(this.input, this.overlay, {
+      surface: this.canvas,
       buttons: [
         { action: 'attack', label: 'Attack', className: 'touch-attack' },
         { action: 'roll', label: 'Roll', className: 'touch-roll' },
@@ -215,7 +222,7 @@ export class Game {
   updateTouch() {
     if (!this.touch) return;
     const mode = settings.values.touch;
-    const on = this.mode === 'play' && (mode === 'on' || (mode === 'auto' && isTouchDevice()));
+    const on = this.mode === 'play' && (mode === 'on' || (mode === 'auto' && this.usingTouch));
     if (on) this.touch.show();
     else this.touch.hide();
   }
@@ -237,8 +244,22 @@ export class Game {
       if (d.id === 'arena' && this.sandbox.player.position.z > -18) this.music.play(MUSIC.sandbox);
     });
 
-    this.canvas.addEventListener('click', () => {
-      if (this.mode === 'play' && !isTouchDevice()) this.input.requestPointerLock();
+    // Follow the pointer actually in use (capture phase: before anything else sees it).
+    window.addEventListener(
+      'pointerdown',
+      (e) => {
+        const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
+        if (touch === this.usingTouch) return;
+        this.usingTouch = touch;
+        if (touch) this.input.lastDevice = 'touch';
+        this.updateTouch();
+      },
+      true,
+    );
+    // A mouse press on the game captures the mouse for the camera (the same
+    // press also counts as an attack).
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (this.mode === 'play' && e.pointerType === 'mouse') this.input.requestPointerLock();
     });
     document.addEventListener('pointerlockchange', () => {
       if (!document.pointerLockElement && this.mode === 'play' && !this.releasingPointer) this.pause();

@@ -137,8 +137,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .touch-controls { position: absolute; inset: 0; pointer-events: none; }
 .touch-controls[hidden] { display: none; }
 .touch-controls > * { pointer-events: auto; }
-.touch-stick-zone { position: absolute; left: 0; bottom: 0; width: 45%; height: 65%; }
-.touch-look-zone { position: absolute; right: 0; top: 0; width: 55%; height: 100%; }
+.touch-controls > .touch-stick { pointer-events: none; }
 .touch-stick { position: absolute; left: 110px; top: calc(100% - 130px); width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 3px solid rgba(255, 244, 224, 0.35); background: rgba(43, 29, 74, 0.25); opacity: 0.55; }
 .touch-stick.active { opacity: 1; }
 .touch-stick-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255, 244, 224, 0.8); }

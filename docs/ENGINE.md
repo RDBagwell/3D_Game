@@ -177,8 +177,13 @@ standard mapping works; the HUD names its buttons (A/B/X/Y, ✕/○/□/△ or t
 Switch layout) from the pad's id.
 
 **Touch:** `TouchControls` adds a floating stick (it appears under the left
-thumb), camera drag on the right, and thumb-sized buttons, only on touch
-screens (or when forced on in Settings). It drives the same actions.
+thumb), camera drag on the right, and thumb-sized buttons. It drives the same
+actions. The stick and the drag read fingers from the canvas itself and
+ignore the mouse, so nothing invisible ever sits over the game. The controls
+follow the pointer actually in use (`Game.listen`): they start on for phones
+and tablets, come up as soon as a finger touches a touchscreen laptop, and go
+away again when the mouse is used. Settings → touch controls On / Off
+overrides that.
 
 **The input buffer** (`InputBuffer`) remembers attack and roll presses for
 a few frames so an early press still counts when the action becomes

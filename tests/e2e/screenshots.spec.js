@@ -70,7 +70,8 @@ for (const size of SIZES) {
     test(`sandbox (${size.name})`, async ({ page }) => {
       await page.addInitScript(() => localStorage.setItem('3d:settings', JSON.stringify({ touch: 'auto' })));
       await openGame(page);
-      await page.getByRole('button', { name: 'Play' }).click();
+      const play = page.getByRole('button', { name: 'Play' });
+      await (size.name === 'phone' ? play.tap() : play.click()); // a finger on the phone, so its touch controls show
       await page.evaluate(() => (/** @type {Game} */ (window).game.hud.banner.hidden = true));
       await place(page, { x: 0.5, z: -2.55 }, Math.PI - 0.12);
       // Freeze just after the slash lands: sparks, flash and a damage number.
