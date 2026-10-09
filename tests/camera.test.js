@@ -83,8 +83,54 @@ describe('follow camera', () => {
     cam.reset({ x: 0, y: 0, z: 0 }, Math.PI);
     // Target off to the right (+X): the camera should end up on the left (-X side), looking across.
     run(cam, { ...still, target: { x: 0, y: 0, z: 0 }, lockTarget: { x: 6, y: 0, z: 0 } }, 120);
-    expect(Math.abs(angleDelta(cam.yaw, Math.atan2(-6, 0)))).toBeLessThan(0.05);
+    // It turns until the target is inside the framing dead-zone (0.3 rad), then stops.
+    const off = Math.abs(angleDelta(cam.yaw, Math.atan2(-6, 0)));
+    expect(off).toBeLessThan(0.32);
     expect(cam.position.x).toBeLessThan(0);
+    // ...and stays put while the target stays framed.
+    const yaw = cam.yaw;
+    run(cam, { ...still, target: { x: 0, y: 0, z: 0 }, lockTarget: { x: 6, y: 0, z: 0 } }, 60);
+    expect(Math.abs(angleDelta(cam.yaw, yaw))).toBeLessThan(1e-6);
+  });
+
+  it('locked on to a tall enemy, the camera aims higher and steps back', () => {
+    const small = new FollowCamera();
+    const tall = new FollowCamera();
+    for (const [cam, lockHeight] of /** @type {const} */ ([[small, 1.7], [tall, 2.6]])) {
+      cam.reset({ x: 0, y: 0, z: 0 }, Math.PI);
+      run(cam, { ...still, target: { x: 0, y: 0, z: 0 }, lockTarget: { x: 0, y: 0, z: -4 }, lockHeight }, 120);
+    }
+    expect(tall.pivot.y).toBeGreaterThan(small.pivot.y);
+    expect(tall.distance).toBeGreaterThan(small.distance);
+  });
+
+  it('auto-follow: left alone, it drifts round behind a player running sideways; turning it by hand wins', () => {
+    const cam = new FollowCamera();
+    cam.reset({ x: 0, y: 0, z: 0 }, Math.PI); // behind a hero facing -Z: yaw 0
+    const right = { ...still, target: { x: 0, y: 0, z: 0 }, lead: { x: 1, z: 0 } }; // running towards +X
+    run(cam, right, 30); // within the follow delay: nothing yet
+    expect(Math.abs(angleDelta(cam.yaw, 0))).toBeLessThan(1e-6);
+    run(cam, right, 360);
+    // Behind a hero running towards +X is yaw atan2(1, 0) + PI = -PI/2.
+    expect(Math.abs(angleDelta(cam.yaw, -Math.PI / 2))).toBeLessThan(0.15);
+    // A touch of manual look restarts the delay.
+    const before = cam.yaw;
+    run(cam, { ...right, lead: { x: 0, z: 1 }, look: { x: 0.01, y: 0 } }, 1);
+    run(cam, { ...right, lead: { x: 0, z: 1 } }, 20);
+    expect(Math.abs(angleDelta(cam.yaw, before - 0.01))).toBeLessThan(1e-6);
+    // Running straight at the camera doesn't whip it round.
+    const at = new FollowCamera();
+    at.reset({ x: 0, y: 0, z: 0 }, Math.PI);
+    run(at, { ...still, target: { x: 0, y: 0, z: 0 }, lead: { x: 0, z: 1 } }, 240);
+    expect(Math.abs(angleDelta(at.yaw, 0))).toBeLessThan(1e-6);
+  });
+
+  it('auto-follow off: the camera stays where it was put', () => {
+    const cam = new FollowCamera();
+    cam.settings.follow = 0;
+    cam.reset({ x: 0, y: 0, z: 0 }, Math.PI);
+    run(cam, { ...still, target: { x: 0, y: 0, z: 0 }, lead: { x: 1, z: 0 } }, 240);
+    expect(Math.abs(angleDelta(cam.yaw, 0))).toBeLessThan(1e-6);
   });
 
   it('recentres behind the character on request', () => {

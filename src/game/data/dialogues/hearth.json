@@ -27,7 +27,7 @@
     },
     "light": {
       "text": "You lay the ember in the grey ash. For a long moment, nothing. Then a crackle, a breath of heat, and the Hearth catches.",
-      "effects": [{ "takeItem": "hearth_ember" }, { "setFlag": "hearth_lit" }, { "ending": true }]
+      "effects": [{ "takeItem": "hearth_ember" }, { "takeItem": "lamp_crate" }, { "giveItem": "lamp_crate_lit" }, { "setFlag": "hearth_lit" }, { "ending": true }]
     }
   }
 }

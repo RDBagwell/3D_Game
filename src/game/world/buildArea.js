@@ -62,6 +62,7 @@ export const MODULE = 4 * DUNGEON_SCALE;
  * @property {string} defaultSurface  footsteps where no surface zone matches
  * @property {boolean} [respawnEnemies]  enemies come back after a while (training); otherwise they stay down until you rest or die
  * @property {'trainingGrounds'} [scene]  build this scene in code first, then add the rest
+ * @property {number} [killY]  falling below this height puts the hero back on solid ground (default PLAYER.fall.killY)
  * @property {BlockDef[]} [blocks]
  * @property {{ surface: string, size: Vec3, at: Vec3 }[]} [surfaces]
  * @property {RoomDef[]} [rooms]

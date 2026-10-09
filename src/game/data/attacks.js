@@ -17,9 +17,13 @@
  *   knockback    m/s pushed away from the attacker (scaled by the lab's slider)
  *   hitstun      frames the target can't act after being hit
  *   hitstop      frames the whole fight freezes on impact (scaled by the lab)
- *   knockdown    true: the target falls over instead of flinching. The hero is
- *                also knocked down by any hit that lands mid-swing (a
- *                "counter hit", Sandbox.applyHit)
+ *   knockdown    true: the target falls over instead of flinching
+ *   windupSound  the sound its wind-up makes, when it isn't the enemy's usual
+ *                one (the Warden's two attacks sound different)
+ *   counterHit   true: if it lands while the hero is still winding up a swing
+ *                (the swing's startup frames), the hero is knocked down (a
+ *                "counter hit", Sandbox.applyHit). Only heavy blows have it:
+ *                a swing that's already cutting, or a light bite, just flinches
  *   shake        camera trauma, 0..1
  *   lunge        m/s the attacker steps forward during startup and active frames
  *   hitbox       a sphere that sweeps through an arc during the active frames:
@@ -30,7 +34,13 @@
  *                lab's "combo buffer" frames earlier still count)
  *   rollCancelFrom  first frame a roll may interrupt the attack, when the lab's
  *                "attack-cancel windows" is on; otherwise only after `total`
- *   anim         the animation clip, stretched to the attack's length
+ *   anim         the animation clip
+ *   animImpact   (the hero's attacks) how far through the clip, 0..1, its
+ *                blade moves fastest: the clip is timed so that moment lands
+ *                in the middle of the active frames, when the hit is dealt.
+ *                Measured from the knight's clips (the sword tip's speed,
+ *                sampled at 120 points; Phase 2 of docs/ROADMAP.md).
+ *                Without it, the clip is stretched over the whole attack
  *
  * docs/GAME-FEEL.md has a diagram of slash1 with its buffer window.
  */
@@ -39,6 +49,7 @@
  * @typedef {object} Attack
  * @property {string} name
  * @property {string} anim
+ * @property {number} [animImpact]
  * @property {number} startup
  * @property {number} active
  * @property {number} recovery
@@ -48,6 +59,8 @@
  * @property {number} hitstun
  * @property {number} hitstop
  * @property {boolean} [knockdown]
+ * @property {boolean} [counterHit]
+ * @property {string} [windupSound]  a sound (data/sounds.js) for its wind-up, if not the enemy's usual
  * @property {number} shake
  * @property {number} lunge
  * @property {{ reach: number, radius: number, height: number, arcFrom: number, arcTo: number }} hitbox
@@ -61,6 +74,7 @@ export const ATTACKS = {
   slash1: {
     name: 'Slash',
     anim: '1H_Melee_Attack_Slice_Diagonal',
+    animImpact: 0.375,
     startup: 7,
     active: 4,
     recovery: 17,
@@ -79,6 +93,7 @@ export const ATTACKS = {
   slash2: {
     name: 'Return slash',
     anim: '1H_Melee_Attack_Slice_Horizontal',
+    animImpact: 0.233,
     startup: 6,
     active: 4,
     recovery: 18,
@@ -97,6 +112,7 @@ export const ATTACKS = {
   slash3: {
     name: 'Overhead chop',
     anim: '1H_Melee_Attack_Chop',
+    animImpact: 0.508,
     startup: 13,
     active: 5,
     recovery: 26,
@@ -127,6 +143,7 @@ export const ATTACKS = {
     knockback: 5.5,
     hitstun: 22,
     hitstop: 6,
+    counterHit: true,
     shake: 0.5,
     lunge: 3.2,
     hitbox: { reach: 1.15, radius: 0.55, height: 0.95, arcFrom: -20, arcTo: 20 },
@@ -168,6 +185,8 @@ export const ATTACKS = {
     knockback: 7.5,
     hitstun: 26,
     hitstop: 7,
+    counterHit: true,
+    windupSound: 'boss_windup',
     shake: 0.55,
     lunge: 1.2,
     hitbox: { reach: 2.5, radius: 0.85, height: 1.0, arcFrom: -100, arcTo: 100 },
@@ -180,13 +199,15 @@ export const ATTACKS = {
     anim: '2H_Melee_Attack_Chop',
     startup: 48,
     active: 5,
-    recovery: 125,
+    // After the axe comes free: the stuck time before it is ENEMIES.warden.stuckFrames.
+    recovery: 22,
     damage: 32,
     poise: 0,
     knockback: 9,
     hitstun: 30,
     hitstop: 10,
     knockdown: true,
+    windupSound: 'boss_slam_windup',
     shake: 0.8,
     lunge: 2.2,
     hitbox: { reach: 2.3, radius: 1.05, height: 0.7, arcFrom: -6, arcTo: 6 },
@@ -213,7 +234,7 @@ export const PROJECTILES = {
   ember: { name: 'Ember', speed: 9.5, radius: 0.36, life: 2.4, damage: 14, knockback: 5, hitstun: 20, hitstop: 4, shake: 0.3, height: 1.1 },
 };
 
-/** The player's combo, in order. */
+/** The player's combo, in order: a fresh swing starts with the first. */
 export const PLAYER_COMBO = ['slash1', 'slash2', 'slash3'];
 
 /** @param {Attack} attack */

@@ -232,6 +232,9 @@ export class WorldView {
     for (const view of this.views.values()) {
       view.ring?.geometry.dispose();
       /** @type {any} */ (view.ring?.material)?.dispose();
+      view.lane?.geometry.dispose(); // shared with laneFill
+      /** @type {any} */ (view.lane?.material)?.dispose();
+      /** @type {any} */ (view.laneFill?.material)?.dispose();
     }
     for (const v of this.objectViews) v.dispose();
     this.scene.traverse((o) => {
@@ -376,6 +379,7 @@ export class WorldView {
       if (d.weak) this.floaters.add(`Weak point! ${d.damage}`, { ...d.point, y: d.point.y + 0.5 }, 'note good');
     });
     ev.on('block', (d) => {
+      if (d.target?.team === 'player') this.views.get('player')?.blockFlash();
       if (f().hitSounds) play('block', d.point);
       if (f().particles) this.particles.burst(d.point, d.direction, 10, { color: [0.6, 0.85, 1], speed: 5 });
       this.floaters.add('Blocked', { ...d.point, y: d.point.y + 0.4 }, 'note');
@@ -395,7 +399,7 @@ export class WorldView {
     });
     ev.on('windup', (d) => {
       if (!f().telegraph) return;
-      const name = d.boss ? 'boss_windup' : d.cast ? 'cast_windup' : d.foe.kind === 'mite' ? 'mite_windup' : 'windup';
+      const name = d.attack?.windupSound ?? (d.boss ? 'boss_windup' : d.cast ? 'cast_windup' : d.foe.kind === 'mite' ? 'mite_windup' : 'windup');
       play(name, d.foe.position);
     });
     ev.on('noticed', (d) => play(d.boss ? 'boss_awake' : d.foe.kind === 'mite' ? 'mite_noticed' : 'noticed', d.foe.position));

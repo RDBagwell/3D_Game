@@ -23,7 +23,7 @@ Contents:
 1. [How the lab works](#how-the-lab-works)
 2. [Movement](#movement): acceleration, turning, coyote time, roll buffering
 3. [Combat](#combat): input buffering, hit-stop, knockback, invulnerability, cancel windows, aim assist, telegraphs
-4. [Camera](#camera): smoothing, look-ahead, collision, lock-on framing, shake
+4. [Camera](#camera): smoothing, auto-follow, look-ahead, collision, lock-on framing, shake
 5. [Animation](#animation): cross-fades
 6. [Feedback](#feedback): flash, nudge, particles, sound, footsteps, rumble
 7. [Showing the invisible](#showing-the-invisible)
@@ -219,6 +219,14 @@ With the hitbox view on, the hero's capsule turns grey while invulnerable.
 | --- | --- | --- | --- |
 | Roll invulnerability | 12 of 26 frames | 0 to 26 | All 26 makes rolling a free pass through everything; 0 makes dodging a distance check only. About half the roll, starting almost at once, rewards timing without demanding perfection |
 
+**Which way it goes.** Locked on, the hero keeps facing the target, so a roll
+can go sideways or back. The dodge animation matches the way it goes
+(`Dodge_Left`, `Dodge_Right`, `Dodge_Backward`), so the hero never slides
+sideways in a forward-roll pose. Rolling with no direction held while locked
+on is a **backstep**: an 18-frame hop straight back that covers less ground
+than a roll and recovers sooner (`PLAYER.backstep`). Its invulnerability is
+the lab's setting, capped at 8 frames.
+
 ### Attack-cancel windows
 
 **The problem.** If every swing must play out in full, committing to an attack
@@ -272,8 +280,11 @@ and players who can't hear. The grunt keeps turning towards you during the
 wind-up, slowly, and stops 9 frames before the hit, so a late roll or a step
 to the side works. Only one grunt attacks at a time (the attack token), and
 after attacking it recovers for 32 frames: your opening. The flip side: a
-blow that lands while you're mid-swing is a **counter hit** and knocks you
-down, so attacking into a wind-up you've seen is a choice with a cost.
+heavy blow (the grunt's chop, the Warden's sweep: `counterHit` in
+`attacks.js`) that lands while you're still winding up your own swing is a
+**counter hit** and knocks you down, so attacking into a wind-up you've seen
+is a choice with a cost. A light bite, a bolt, or a blow that arrives once
+your blade is already moving only makes you flinch.
 
 Switch telegraphs off and the wind-up is still there, but only in the
 animation: the same fight suddenly feels unfair.
@@ -283,8 +294,9 @@ frames (short, but there's a ring, a hiss and a caption), and two may attack
 at once. Ash adepts wind up 44 frames before each bolt, stop aiming 10
 frames before they let go, and the bolt flies at 8.5 m/s: roll through it,
 block it, or cut it out of the air. The Cinder Warden's sweep winds up for
-34 frames and its slam for 48; the ring shows each attack's real reach, and
-the slam leaves an opening of about two seconds (its axe stuck, its core
+34 frames and its slam for 48. The sweep's ring shows its reach; the slam,
+which only hits a narrow strip ahead, shows that strip as a lane on the floor
+that fills as the axe rises, and each has its own wind-up sound. The slam leaves an opening of about two seconds (its axe stuck, its core
 glowing, double damage).
 
 **Testing fairness.** `tests/helpers/bossBot.js` is a scripted player that
@@ -321,6 +333,25 @@ an exponential approach that behaves identically at any frame rate
 | --- | --- | --- | --- |
 | Follow smoothing | 0.12 s | 0 to 0.6 s | Smoother is calmer but less precise; 0 is perfectly precise and twitchy |
 
+### Auto-follow
+
+**The problem.** An orbit camera that stays wherever it was put makes you
+steer two things at once. Run sideways for a while and you end up looking at
+the hero's shoulder, correcting the camera by hand every few seconds.
+
+**Here.** Once you haven't touched the camera for a moment, it drifts round
+behind you as you run, faster the faster you run. It never follows when you
+run towards it (that would whip it round), and any turn of the camera by hand
+restarts the delay, so it never fights your hand. A side effect, as in other
+third-person games: holding sideways makes the hero curve round the camera.
+Recentring (lock-on with nothing to lock on to) eases in and out over 0.35 s
+instead of swinging at a flat speed.
+
+| Setting | Polished | Range | Trade-off |
+| --- | --- | --- | --- |
+| Auto-follow | 0.6× | 0 to 1 | Strong follow saves steering but takes control away in open areas; 0 leaves the camera where you put it |
+| Auto-follow delay | 0.8 s | 0 to 3 s | Too short and the camera tugs against you right after you've aimed it |
+
 ### Look-ahead
 
 **The problem.** A camera centred on the hero shows as much of where you've
@@ -356,7 +387,10 @@ target, whichever way you move.
 
 **Here.** While locked on, the camera swings to the far side of the hero from
 the target, aims at a point a third of the way towards the target, and backs
-off as they get further apart. Switch it off and the camera just follows; the
+off as they get further apart. It only turns once the target drifts more than
+0.3 rad from the middle of the view, so a fight that's already well framed
+doesn't keep the camera swaying. Tall targets (the Cinder Warden, 2.6 m) are
+aimed at higher and from further back, so they aren't cropped. Switch it off and the camera just follows; the
 target leaves the screen as soon as you strafe.
 
 **Lock-on itself** ([`lockOn.js`](../src/game/combat/lockOn.js)) picks the
@@ -394,6 +428,50 @@ this time ([`Animator`](../src/engine/assets/Animator.js), `crossFadeFrom`).
 | Setting | Polished | Range | Trade-off |
 | --- | --- | --- | --- |
 | Cross-fade | 0.12 s | 0 to 0.4 s | Long blends look smooth but mush fast actions together (an attack's wind-up blurs into the previous pose); 0 snaps |
+
+**Fades into attacks are shorter** (0.05 s at most): a 0.12 s blend would
+swallow most of a 7-frame swing's startup.
+
+### Timing the swing to the hit
+
+**The problem.** If an attack's animation is simply stretched to its length,
+the blade's contact pose lands wherever the animator put it, often after the
+hitbox has already dealt the hit.
+
+**Here.** Each of the hero's swings has an `animImpact`: how far through its
+clip the blade moves fastest. These were measured from the knight's clips by
+tracking the sword tip's speed at 120 points: 0.375 for the diagonal slice,
+0.233 for the horizontal and 0.508 for the chop. The clip is then timed so
+that moment falls in the middle of the active frames, when the hit is dealt.
+Enemies already work this way (`IMPACT` in `CharacterView`).
+
+### Feet that don't slide
+
+**The problem.** One run clip played at every speed means feet skating at a
+jog, and at full speed if the clip was authored slower than the character
+moves.
+
+**Here.** The hero walks (`Walking_A`) below 1.4 m/s and runs above it. Every
+locomotion clip is played at the rate that matches the hero's ground speed,
+from its measured speed (`PLAYER.clipSpeeds`: the toes' speed along the
+ground while planted, at the game's scale). The knight's run covers about
+3.1 m/s at normal speed, so at the hero's 6.2 m/s it plays twice as fast.
+Before, it played at normal speed and the feet slid. Changing strafe
+direction keeps the point in the stride (`syncPhase`), so the legs don't
+restart on the same foot. A blow on the shield plays a short recoil
+(`Block_Hit`).
+
+**Not done:** blocking and drinking while walking still use a single pose
+(the animation system has one layer, so legs and arms can't play different
+clips).
+
+### Falling
+
+Walking off an edge (more than 6 frames in the air) starts a **fall**:
+`Jump_Idle`, a third of the running steering, no attacks or rolls. A drop of
+24 frames or more ends in a short **landing** (`Jump_Land`, 10 frames).
+Below an area's floor (`killY`, default -12 m), the hero is put back on the
+last solid ground they stood on, with 10 damage.
 
 **Root motion** (moving the character by the animation's own movement) isn't
 used: KayKit's clips are authored in place, and code-driven movement is what

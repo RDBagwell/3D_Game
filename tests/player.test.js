@@ -195,4 +195,96 @@ describe('player state machine', () => {
     expect(d.player.state).toBe('dead');
     expect(d.player.fsm.go('idle')).toBe(false);
   });
+
+  it('locked on, a roll plays the dodge for the way it goes; no direction is a backstep', () => {
+    // The harness's camera looks along -Z; the hero faces -Z too. Lock onto
+    // something straight ahead so facing stays put.
+    const cases = /** @type {const} */ ([
+      [{ x: 1, y: 0 }, 'right', 'roll'],
+      [{ x: -1, y: 0 }, 'left', 'roll'],
+      [{ x: 0, y: -1 }, 'backward', 'roll'],
+      [{ x: 0, y: 1 }, 'forward', 'roll'],
+      [{ x: 0, y: 0 }, 'backward', 'backstep'],
+    ]);
+    for (const [move, side, kind] of cases) {
+      const h = playerHarness({ rollBuffer: 8 });
+      h.setLock({ position: { x: 0, y: 0, z: -6 }, alive: true });
+      h.step({ move, press: ['roll'] });
+      expect(h.player.state, `${side}`).toBe('roll');
+      expect(h.player.rollSide, `${move.x},${move.y}`).toBe(side);
+      expect(h.player.rollKind, `${move.x},${move.y}`).toBe(kind);
+    }
+  });
+
+  it('the backstep is shorter than a roll and moves straight back', () => {
+    const roll = playerHarness({ rollBuffer: 8 });
+    roll.setLock({ position: { x: 0, y: 0, z: -6 }, alive: true });
+    roll.step({ move: { x: 0, y: -1 }, press: ['roll'] });
+    roll.steps(PLAYER.roll.frames + 2, { move: { x: 0, y: -1 } });
+    const back = playerHarness({ rollBuffer: 8 });
+    back.setLock({ position: { x: 0, y: 0, z: -6 }, alive: true });
+    back.step({ press: ['roll'] });
+    back.steps(PLAYER.backstep.frames - 2);
+    expect(back.player.state).toBe('roll');
+    back.steps(3);
+    expect(back.player.state).not.toBe('roll'); // over sooner than a roll
+    expect(back.body.position.z).toBeGreaterThan(0.5); // back is +Z, away from the target
+    expect(Math.abs(back.body.position.x)).toBeLessThan(1e-6);
+    expect(back.body.position.z).toBeLessThan(roll.body.position.z); // and covers less ground
+  });
+
+  it('without a lock, a roll with no direction goes forward (no backstep)', () => {
+    const h = playerHarness({ rollBuffer: 8 });
+    h.step({ press: ['roll'] });
+    expect(h.player.rollKind).toBe('roll');
+    expect(h.player.rollSide).toBe('forward');
+  });
+
+  it('walking off an edge: a fall with little steering, then a landing if it was a real drop', () => {
+    const h = playerHarness();
+    const air = () => {
+      h.body.grounded = false;
+      h.body.airFrames++;
+    };
+    // A step down (a few frames in the air) is not a fall.
+    for (let i = 0; i < PLAYER.fall.after; i++) {
+      air();
+      h.step({ move: { x: 0, y: 1 } });
+    }
+    expect(h.player.state).toBe('run');
+    air();
+    h.step({ move: { x: 0, y: 1 } });
+    expect(h.player.state).toBe('fall');
+    // No attacks or rolls in the air.
+    air();
+    h.step({ press: ['attack', 'roll'], move: { x: 0, y: 1 } });
+    expect(h.player.state).toBe('fall');
+    // Air steering is slower than running.
+    for (let i = 0; i < 30; i++) {
+      air();
+      h.step({ move: { x: 1, y: 0 } });
+    }
+    expect(Math.abs(h.player.velocity.x)).toBeLessThanOrEqual(PLAYER.runSpeed * PLAYER.fall.airControl + 1e-6);
+    // Touch down after a long drop: a landing, then back to normal.
+    h.body.grounded = true;
+    h.body.airFrames = 0;
+    h.step();
+    expect(h.player.state).toBe('land');
+    h.steps(PLAYER.fall.landFrames);
+    expect(h.player.state).toBe('idle');
+  });
+
+  it('a short fall lands without the landing recovery', () => {
+    const h = playerHarness();
+    for (let i = 0; i < PLAYER.fall.after + 2; i++) {
+      h.body.grounded = false;
+      h.body.airFrames++;
+      h.step();
+    }
+    expect(h.player.state).toBe('fall');
+    h.body.grounded = true;
+    h.body.airFrames = 0;
+    h.step();
+    expect(h.player.state).toBe('idle');
+  });
 });

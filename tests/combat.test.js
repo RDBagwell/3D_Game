@@ -25,6 +25,14 @@ describe('attack frame data', () => {
     expect(PLAYER_COMBO.every((k) => ATTACKS[k])).toBe(true);
   });
 
+  it("the hero's swings each have a measured impact point, so the blade lands with the hit", () => {
+    for (const key of PLAYER_COMBO) {
+      const a = ATTACKS[/** @type {keyof typeof ATTACKS} */ (key)];
+      expect(a.animImpact, key).toBeGreaterThan(0);
+      expect(a.animImpact, key).toBeLessThan(1);
+    }
+  });
+
   it('phases follow startup, active and recovery frames', () => {
     const a = ATTACKS.slash1;
     expect(attackPhase(a, 0)).toBe('startup');
@@ -141,17 +149,36 @@ describe('combat in the sandbox', () => {
     sb.dispose();
   });
 
-  it('a hit that lands mid-swing is a counter hit: the hero is knocked down', async () => {
+  it('a heavy blow that catches the hero winding up a swing is a counter hit: knocked down', async () => {
     const sb = await Sandbox.create({ grunts: true });
     const grunt = sb.grunts[0];
     const player = sb.player;
-    sb.step(press('attack'));
-    sb.step(idle);
-    expect(player.state).toBe('attack');
-    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'hit', point: { ...player.position } });
+    const hit = (/** @type {any} */ attack) => sb.applyHit(grunt, attack, { target: player, result: 'hit', point: { ...player.position } });
+    const swing = () => {
+      player.fsm.force('idle');
+      player.hp = player.maxHp;
+      sb.hitstop = 0; // the last hit's freeze
+      sb.step(press('attack'));
+      sb.step(idle);
+      expect(player.state).toBe('attack');
+    };
+    // Heavy blow during the swing's startup: knocked down.
+    swing();
+    hit(ATTACKS.gruntChop);
     expect(player.state).toBe('knockdown');
+    // Not swinging: an ordinary flinch.
     player.fsm.force('idle');
-    sb.applyHit(grunt, ATTACKS.gruntChop, { target: player, result: 'hit', point: { ...player.position } });
+    hit(ATTACKS.gruntChop);
+    expect(player.state).toBe('hitstun');
+    // A light bite during the startup: just a flinch.
+    swing();
+    hit(ATTACKS.miteBite);
+    expect(player.state).toBe('hitstun');
+    // A heavy blow once the swing is already cutting (active frames): a flinch.
+    swing();
+    while (player.attackFrameNow < ATTACKS.slash1.startup) sb.step(idle);
+    expect(player.state).toBe('attack');
+    hit(ATTACKS.gruntChop);
     expect(player.state).toBe('hitstun');
     sb.dispose();
   });

@@ -120,6 +120,8 @@ export class Sandbox {
 
     const start = level.spawns.player[spawn] ?? level.spawns.player.start ?? { position: { x: 0, y: 0, z: 0 }, yaw: 0 };
     this.playerSpawn = start;
+    /** The last solid ground the hero stood on (catchFall puts them back there). @type {{ x: number, y: number, z: number } | null} */
+    this.safeGround = null;
     const body = physics.createCharacter({ position: start.position, radius: PLAYER.radius, height: PLAYER.height });
     this.player = new Player(body, { yaw: start.yaw });
 
@@ -233,6 +235,8 @@ export class Sandbox {
       lookAhead: Number(feel.lookAhead),
       collision: Boolean(feel.cameraCollision),
       lockFraming: Boolean(feel.lockFraming),
+      follow: Number(feel.cameraFollow ?? 0),
+      followDelay: Number(feel.followDelay ?? 0.8),
     };
   }
 
@@ -299,7 +303,28 @@ export class Sandbox {
     this.updateCamera(frame);
     this.level.updateTriggers('player', this.player.position, (id) => this.emit('triggerEnter', { id }), (id) => this.emit('triggerExit', { id }));
     this.updateWorld(frame);
+    this.catchFall();
     this.updateRespawns();
+  }
+
+  /**
+   * The kill plane: remember the last solid ground the hero stood on, and if
+   * they fall out of the world (below the area's `killY`), put them back
+   * there with a little damage instead of letting them drop forever.
+   * @private
+   */
+  catchFall() {
+    const p = this.player;
+    if (!p.alive) return;
+    if (p.body.grounded && this.tick % 10 === 0) this.safeGround = { x: p.position.x, y: p.position.y, z: p.position.z };
+    if (p.position.y > (this.area.killY ?? PLAYER.fall.killY)) return;
+    const back = this.safeGround ?? this.playerSpawn.position;
+    p.body.teleport?.({ x: back.x, y: back.y + 0.1, z: back.z });
+    p.velocity.x = p.velocity.z = 0;
+    p.hp = Math.max(1, p.hp - Math.round(PLAYER.fall.fallOutDamage * this.damageTaken));
+    p.fsm.force('idle');
+    this.camera.reset(p.position, p.facing);
+    this.emit('fellOut', { who: p });
   }
 
   /**
@@ -559,7 +584,7 @@ export class Sandbox {
           this.endProjectile(p, 'blocked');
           continue;
         } else {
-          const counter = player.fsm.is('attack');
+          const counter = false; // bolts and embers are never counter hits
           const damage = Math.max(1, Math.round(def.damage * this.damageTaken));
           player.takeHit({ damage, knockback, hitstun: def.hitstun, knockdown: counter });
           this.hitstop = Math.max(this.hitstop, Math.round(def.hitstop * Number(this.feel.hitstopScale)));
@@ -709,8 +734,8 @@ export class Sandbox {
 
     if (result.result === 'hit') {
       const wasAlive = target.alive;
-      // A counter hit: caught in the middle of your own swing, you're knocked down.
-      const counter = target instanceof Player && target.fsm.is('attack');
+      // A counter hit: a heavy blow caught you winding up a swing, so you're knocked down.
+      const counter = target instanceof Player && Boolean(attack.counterHit) && target.fsm.is('attack') && Boolean(target.attack) && attackPhase(/** @type {any} */ (target.attack), target.attackFrameNow) === 'startup';
       let damage = attack.damage;
       if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
       if (target instanceof Enemy) damage = Math.max(1, Math.round(damage * target.brain.damageTaken));
@@ -747,6 +772,7 @@ export class Sandbox {
       lead,
       look: this.hitstop > 0 && this.lockTarget ? { x: 0, y: 0 } : frame.look,
       lockTarget: this.lockTarget ? this.lockTarget.position : null,
+      lockHeight: this.lockTarget?.height,
       recenter: this.recenter,
     });
     this.recenter = null;
