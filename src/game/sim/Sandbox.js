@@ -102,6 +102,10 @@ export class Sandbox {
     this.feel = feel;
     this.respawnPlayer = respawnPlayer;
     this.disposed = false;
+    /** Whether the quick slot has something to use (the adventure sets this). */
+    this.canUseItem = () => false;
+    /** Multiplies damage the player takes (the difficulty assist). */
+    this.damageTaken = 1;
     this.camera = new FollowCamera({ probe: (o, d, max, r) => physics.sphereCast(o, d, max, r) });
 
     const start = level.spawns.player[spawn] ?? level.spawns.player.start ?? { position: { x: 0, y: 0, z: 0 }, yaw: 0 };
@@ -183,7 +187,9 @@ export class Sandbox {
     const def = ENEMIES.grunt;
     const body = this.physics.createCharacter({ position, radius: def.radius, height: def.height });
     const foe = new Grunt(`${type}_${name}`, body, position, yaw);
+    foe.spawnName = name;
     this.foes.push(foe);
+    this.emit('spawned', { foe });
     return foe;
   }
 
@@ -255,6 +261,7 @@ export class Sandbox {
       lockTarget: this.lockTarget,
       enemies: this.enemies,
       emit,
+      canUseItem: this.canUseItem,
     });
 
     for (const foe of this.foes) this.updateGrunt(foe);
@@ -275,6 +282,32 @@ export class Sandbox {
    */
   idle() {
     this.step({ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: {} });
+  }
+
+  /**
+   * While a conversation has the player's attention: the fight is paused,
+   * the camera frames the player and who they're talking to over the
+   * player's shoulder, and NPCs turn to face them.
+   * @param {{ x: number, y: number, z: number } | null} focus
+   */
+  frameTalk(focus) {
+    this.remember();
+    this.camera.snapshot();
+    this.updateNpcs();
+    const p = this.player.position;
+    let shot;
+    if (focus) {
+      const dx = focus.x - p.x;
+      const dz = focus.z - p.z;
+      // Face each other.
+      this.player.facing = approachAngle(this.player.facing, yawFromDirection(dx, dz), 6 * TICK);
+      const toward = Math.atan2(dx, dz);
+      // Behind the player and off to one side: whichever side the camera is already nearer.
+      const sides = [toward + Math.PI - 0.95, toward + Math.PI + 0.95];
+      const yaw = Math.abs(angleDelta(this.camera.yaw, sides[0])) <= Math.abs(angleDelta(this.camera.yaw, sides[1])) ? sides[0] : sides[1];
+      shot = { pivot: { x: p.x + dx * 0.45, y: p.y + 1.45, z: p.z + dz * 0.45 }, yaw, pitch: -0.14, distance: 3.6 };
+    }
+    this.camera.update(TICK, { target: p, lead: { x: 0, z: 0 }, look: { x: 0, y: 0 }, lockTarget: null, recenter: null, shot });
   }
 
   /** @private */
@@ -514,9 +547,12 @@ export class Sandbox {
       const wasAlive = target.alive;
       // A counter hit: caught in the middle of your own swing, you're knocked down.
       const counter = target instanceof Player && target.fsm.is('attack');
-      target.takeHit({ damage: attack.damage, poise: attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
+      let damage = attack.damage;
+      if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
+      if (target instanceof Player) damage = Math.max(1, Math.round(damage * this.damageTaken));
+      target.takeHit({ damage, poise: attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
       this.hitstop = Math.max(this.hitstop, Math.round(attack.hitstop * Number(this.feel.hitstopScale)));
-      this.emit('hit', { ...base, damage: attack.damage, killed: wasAlive && !target.alive, counter });
+      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter });
       if (wasAlive && !target.alive && target instanceof Grunt) {
         target.body.setSolid?.(false);
         if (this.lockTarget === target) this.setLock(null);

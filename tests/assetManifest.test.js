@@ -55,7 +55,8 @@ describe('asset manifest', () => {
   });
 
   it('nothing Nintendo-derived is left (no hearts, rupees or the old sound files)', () => {
-    const banned = /(rupee|rubis|heart|sprite_ui|rollvoice|get_heart|secret\.wav)/i;
+    // "heart" as a word (heart.png, ui_heart_full), not inside "hearth".
+    const banned = /(rupee|rubis|(^|[^a-z])hearts?([^a-z]|$)|sprite_ui|rollvoice|get_heart|secret\.wav)/i;
     const all = files(path.join(root, 'public')).concat(files(path.join(root, 'src')));
     for (const f of all) expect(path.basename(f), f).not.toMatch(banned);
   });

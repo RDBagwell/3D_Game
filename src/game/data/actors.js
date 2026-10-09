@@ -30,6 +30,8 @@ export const PLAYER = {
   respawnSeconds: 2.5,
   /** Distance between footsteps while running, metres. */
   stride: 1.55,
+  /** Drinking a tonic: how long it takes, when it heals, and the walking speed meanwhile. */
+  drink: { frames: 54, effectFrame: 30, speed: 1.3 },
 };
 
 export const ENEMIES = {
@@ -66,6 +68,8 @@ export const ENEMIES = {
     /** ...and stops tracking this many frames before the hit, so a late roll works. */
     commitFrames: 9,
     respawnSeconds: 6,
+    /** Shells it leaves when beaten. */
+    shells: 6,
   },
   dummy: {
     name: 'Training dummy',

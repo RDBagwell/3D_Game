@@ -1,8 +1,15 @@
 import { EventBus } from '../../engine/index.js';
 import { Sandbox } from '../sim/Sandbox.js';
+import { PLAYER, ENEMIES } from '../data/actors.js';
 import { AREAS } from '../data/areas/index.js';
 import { NPCS } from '../data/npcs.js';
 import { OBJECTS } from '../data/objects.js';
+import { ITEMS } from '../data/items.js';
+import { QUESTS } from '../data/quests.js';
+import { EVENTS } from '../data/events.js';
+import { ENCOUNTERS } from '../data/encounters.js';
+import { DIALOGUES } from '../data/dialogues/index.js';
+import { DialogueRunner } from '../dialogue/DialogueRunner.js';
 import { conditionContext, evaluateCondition } from './conditions.js';
 import { applyEffects } from './effects.js';
 
@@ -12,14 +19,19 @@ import { applyEffects } from './effects.js';
  * sandbox into progress:
  *
  *   walking into an exit       → 'travel' (the game fades and calls enter())
+ *   walking into a trigger     → its event (data/events.js): a banner, effects
  *   reaching a hearthstone     → the checkpoint moves there ('checkpoint')
- *   pressing Interact          → 'dialogue' with an NPC's or object's dialogue
- *   striking a switch          → its effects ('notice')
+ *   pressing Interact          → 'dialogue': the game opens the box and plays
+ *                                talk(); finish() applies what it asked for
+ *                                (a shop, an encounter, travel, the ending)
+ *   striking a switch          → its effects
+ *   beating an enemy           → shells, and its `defeat` effects (the boss)
+ *   drinking from the quick slot → a tonic used, health restored
  *   falling in battle          → 'died'; respawn() returns you to the checkpoint
  *
- * Objects look the way the flags say (OBJECTS[id].openIf / showIf), checked
- * again after every change. Everything here is data-driven: no NPC, object or
- * quest has code of its own.
+ * After any change it brings objects up to date with the flags (refresh) and
+ * announces quest progress ('quest'). Everything is data-driven: no NPC,
+ * object, item or quest has code of its own.
  *
  * It runs headless (no drawing), so whole playthroughs are tested in Node
  * (tests/adventure.test.js).
@@ -30,11 +42,13 @@ export class Adventure {
    * @param {object} [options]
    * @param {() => import('../feel/feelSettings.js').FeelValues} [options.feel]
    * @param {Record<string, any>} [options.models]
+   * @param {string} [options.playerName]  what {player} becomes in dialogue
    */
-  constructor(state, { feel, models } = {}) {
+  constructor(state, { feel, models, playerName = 'Ren' } = {}) {
     this.state = state;
     this.getFeel = feel;
     this.models = models;
+    this.playerName = playerName;
     /** Higher-level events for the game and UI. */
     this.events = new EventBus();
     /** @type {Sandbox | null} */
@@ -42,6 +56,14 @@ export class Adventure {
     this.ctx = conditionContext(state);
     /** Areas built ahead of time (preloading the next area). @type {Map<string, import('three').Object3D>} */
     this.prepared = new Map();
+    /** The conversation in progress. @type {{ runner: DialogueRunner, npc: string | null } | null} */
+    this.talking = null;
+    /** The fight in progress (Dorran's trial). @type {{ id: string, wave: number, foes: any[] } | null} */
+    this.encounter = null;
+    /** Multiplies damage the player takes (Settings → difficulty). */
+    this.damageTaken = 1;
+    // Quests already under way when the game is loaded don't announce themselves again.
+    this.checkQuests(true);
   }
 
   /** @returns {import('../world/buildArea.js').AreaDef} */
@@ -59,9 +81,11 @@ export class Adventure {
     const def = AREAS[/** @type {keyof typeof AREAS} */ (areaId)];
     if (!def) throw new Error(`No area "${areaId}"`);
     this.sandbox?.dispose();
+    this.encounter = null;
+    this.talking = null;
     const levelRoot = this.prepared.get(areaId);
     this.prepared.delete(areaId);
-    const enemyRules = Object.fromEntries((def.enemies ?? []).map((e) => [e.name, e]));
+    const rules = Object.fromEntries((def.enemies ?? []).map((e) => [e.name, e]));
     const sandbox = await Sandbox.create({
       area: def,
       levelRoot,
@@ -69,16 +93,16 @@ export class Adventure {
       spawn,
       feel: this.getFeel?.(),
       seed: `${areaId}:${spawn}`,
-      spawnEnemy: (s) => {
-        // A beaten boss stays beaten: `unless` names the flag that keeps it away.
-        const unless = enemyRules[s.name]?.unless;
-        return !unless || !evaluateCondition(unless, this.ctx);
-      },
+      // A beaten boss stays beaten: `unless` names what keeps it away.
+      spawnEnemy: (s) => !rules[s.name]?.unless || !evaluateCondition(rules[s.name].unless, this.ctx),
       respawnPlayer: false,
     });
     this.sandbox = sandbox;
     this.state.area = areaId;
     this.state.spawn = spawn;
+    sandbox.canUseItem = () => this.state.itemCount('tonic') > 0 && sandbox.player.hp < sandbox.player.maxHp;
+    sandbox.damageTaken = this.damageTaken;
+    this.applyUpgrades(true);
     this.refresh();
     this.listen(sandbox);
     return sandbox;
@@ -97,10 +121,30 @@ export class Adventure {
    */
   step(frame, dt) {
     this.state.playTime += dt;
-    this.sandbox?.step(frame);
+    if (!this.sandbox) return;
+    this.sandbox.step(frame);
+    if (this.encounter) this.updateEncounter();
   }
 
-  /** Bring every object and NPC in the area up to date with the flags. */
+  /** Upgrades are items: more health and a sharper sword while you carry them. */
+  applyUpgrades(fill = false) {
+    const player = this.sandbox?.player;
+    if (!player) return;
+    let maxHp = PLAYER.maxHp;
+    let damage = 1;
+    for (const [id, count] of this.state.items) {
+      const item = ITEMS[id];
+      if (!item || item.type !== 'upgrade' || count <= 0) continue;
+      maxHp += item.maxHp ?? 0;
+      damage *= item.damage ?? 1;
+    }
+    const gained = maxHp - player.maxHp;
+    player.maxHp = maxHp;
+    player.damageScale = damage;
+    player.hp = fill ? maxHp : Math.min(maxHp, player.hp + Math.max(0, gained));
+  }
+
+  /** Bring every object in the area up to date with the flags. */
   refresh() {
     const sb = this.sandbox;
     if (!sb) return;
@@ -108,24 +152,139 @@ export class Adventure {
       const def = OBJECTS[o.id];
       const open = def.openIf ? evaluateCondition(def.openIf, this.ctx) : false;
       const hidden = def.showIf ? !evaluateCondition(def.showIf, this.ctx) : false;
-      // Gates, doors and chests can be used while closed; pickups and hearths while they're there.
-      const prompt = def.dialogue && !(open && def.type !== 'hearth') ? def.prompt ?? 'Examine' : null;
-      sb.setObject(o.id, { open, hidden, prompt: def.type === 'hearth' && open ? null : prompt });
+      // Gates, doors and chests can be used while closed; pickups and the Hearth while there.
+      const usable = def.dialogue && !(open && def.type !== 'hearth') && !(def.type === 'hearth' && open);
+      sb.setObject(o.id, { open, hidden, prompt: usable ? def.prompt ?? 'Examine' : null });
     }
     this.events.emit('refresh', {});
   }
 
   /**
-   * Run effects (from a switch, an encounter, a dialogue) and announce what changed.
+   * Announce quests that moved on since last time ('quest' events).
+   * @param {boolean} [silent]  just remember where they are (loading a save)
+   */
+  checkQuests(silent = false) {
+    const seen = this.state.questStages;
+    for (const [id, quest] of Object.entries(QUESTS)) {
+      const done = evaluateCondition(quest.done, this.ctx);
+      let stage = -1;
+      quest.stages.forEach((s, i) => {
+        if (evaluateCondition(s.when, this.ctx)) stage = i;
+      });
+      const now = done ? quest.stages.length : stage;
+      const before = seen[id] ?? -1;
+      if (now === before) continue;
+      seen[id] = now;
+      if (silent || now < before) continue;
+      if (done) this.events.emit('quest', { id, name: quest.name, text: quest.doneText, status: 'done' });
+      else if (before === -1) this.events.emit('quest', { id, name: quest.name, text: quest.stages[now].text, status: 'new' });
+      else this.events.emit('quest', { id, name: quest.name, text: quest.stages[now].text, status: 'updated' });
+    }
+  }
+
+  /**
+   * Run effects (a switch, an encounter, an event, a defeat) and announce what changed.
    * @param {Record<string, any>[] | undefined} effects
    */
   apply(effects) {
     const result = applyEffects(effects, this.state);
     if (result.heal && this.sandbox) this.sandbox.player.hp = this.sandbox.player.maxHp;
     for (const text of result.notices) this.events.emit('notice', { text });
-    this.refresh();
+    this.afterChange();
     return result;
   }
+
+  /** @private The state changed: objects, upgrades, quests. */
+  afterChange() {
+    this.applyUpgrades();
+    this.refresh();
+    this.checkQuests();
+  }
+
+  // ------------------------------------------------------------------ conversations
+
+  /**
+   * Start a conversation (the game shows it). NPCs turn to face you.
+   * @param {string} id  dialogue id
+   * @param {string | null} [npc]
+   */
+  talk(id, npc = null) {
+    const dialogue = DIALOGUES[id];
+    if (!dialogue) throw new Error(`No dialogue "${id}"`);
+    const runner = new DialogueRunner(dialogue, this.state, id, { player: this.playerName }).start();
+    this.talking = { runner, npc };
+    const n = this.sandbox?.npcs.find((x) => x.id === npc);
+    if (n) n.talking = true;
+    this.sandbox?.setLock(null);
+    return runner;
+  }
+
+  /**
+   * The conversation is over: apply what it asked for, in the game's order.
+   * @returns {{ shop: string | null, travel: { area: string, spawn: string } | null, ending: boolean }}
+   */
+  finish() {
+    const t = this.talking;
+    this.talking = null;
+    if (!t) return { shop: null, travel: null, ending: false };
+    const n = this.sandbox?.npcs.find((x) => x.id === t.npc);
+    if (n) n.talking = false;
+    const r = t.runner;
+    if (r.heal && this.sandbox) this.sandbox.player.hp = this.sandbox.player.maxHp;
+    if (r.changed) this.afterChange();
+    if (r.encounter) this.startEncounter(r.encounter);
+    return { shop: r.shop, travel: r.travel, ending: r.ending };
+  }
+
+  /** Keep the camera on the conversation and NPCs turning (the fight is paused while talking). */
+  talkStep() {
+    const sb = this.sandbox;
+    const t = this.talking;
+    if (!sb || !t) return;
+    const npc = sb.npcs.find((x) => x.id === t.npc);
+    sb.frameTalk(npc ? npc.position : null);
+  }
+
+  // ------------------------------------------------------------------ encounters
+
+  /** @param {string} id */
+  startEncounter(id) {
+    const enc = ENCOUNTERS[/** @type {keyof typeof ENCOUNTERS} */ (id)];
+    if (!enc || !this.sandbox || enc.area !== this.state.area) return;
+    this.encounter = { id, wave: -1, foes: [] };
+    if (enc.intro) this.events.emit('banner', { text: enc.intro });
+    this.events.emit('encounter', { id, status: 'start' });
+    this.nextWave();
+  }
+
+  /** @private */
+  nextWave() {
+    const e = /** @type {NonNullable<Adventure['encounter']>} */ (this.encounter);
+    const sb = /** @type {Sandbox} */ (this.sandbox);
+    const enc = ENCOUNTERS[/** @type {keyof typeof ENCOUNTERS} */ (e.id)];
+    e.wave++;
+    e.foes = enc.waves[e.wave].map((f, i) => {
+      const at = sb.level.markers[f.at];
+      return sb.spawnFoe(f.type, `${e.id}_${e.wave}_${i}`, { x: at.x, y: at.y, z: at.z }, 0);
+    }).filter(Boolean);
+    // They've been waiting in the pens: they know where you are.
+    for (const foe of e.foes) foe.brain.aware = true;
+    if (e.wave > 0) this.events.emit('banner', { text: `Wave ${e.wave + 1}!` });
+  }
+
+  /** @private */
+  updateEncounter() {
+    const e = /** @type {NonNullable<Adventure['encounter']>} */ (this.encounter);
+    if (e.foes.some((f) => f.alive)) return;
+    const enc = ENCOUNTERS[/** @type {keyof typeof ENCOUNTERS} */ (e.id)];
+    if (e.wave + 1 < enc.waves.length) return void this.nextWave();
+    this.encounter = null;
+    if (enc.outro) this.events.emit('banner', { text: enc.outro });
+    this.events.emit('encounter', { id: e.id, status: 'won' });
+    this.apply(enc.win);
+  }
+
+  // ------------------------------------------------------------------ the simulation's events
 
   /**
    * @private
@@ -133,6 +292,7 @@ export class Adventure {
    */
   listen(sb) {
     sb.events.on('exit', (e) => this.events.emit('travel', { area: e.area, spawn: e.spawn }));
+    sb.events.on('triggerEnter', (e) => this.runEvent(e.id));
     sb.events.on('touch', (e) => {
       const def = OBJECTS[e.id];
       if (def?.type !== 'hearthstone' || !def.checkpoint) return;
@@ -148,7 +308,7 @@ export class Adventure {
         this.events.emit('dialogue', { id: npc.dialogue, npc: e.id });
       } else {
         const def = OBJECTS[e.id];
-        if (def.dialogue) this.events.emit('dialogue', { id: def.dialogue, object: e.id });
+        if (def.dialogue) this.events.emit('dialogue', { id: def.dialogue, npc: null, object: e.id });
       }
     });
     sb.events.on('objectHit', (e) => {
@@ -158,9 +318,45 @@ export class Adventure {
       this.apply(def.hitEffects);
       this.events.emit('switched', { id: e.id, point: e.point });
     });
-    sb.events.on('died', (d) => {
-      if (d.who === sb.player) this.events.emit('died', {});
+    sb.events.on('hit', (e) => {
+      if (!e.killed || e.target === sb.player || e.target.kind === 'dummy') return;
+      const foe = e.target;
+      const shells = ENEMIES[/** @type {keyof typeof ENEMIES} */ (foe.kind)]?.shells ?? 0;
+      if (shells > 0) {
+        this.state.shells += shells;
+        this.events.emit('shells', { amount: shells, position: { ...foe.position } });
+      }
+      const rule = (this.area.enemies ?? []).find((x) => x.name === foe.spawnName);
+      if (rule?.defeat) this.apply(rule.defeat);
     });
+    sb.events.on('useItem', () => {
+      if (!this.state.removeItem('tonic')) return;
+      const heal = ITEMS.tonic.heal ?? 0;
+      sb.player.hp = Math.min(sb.player.maxHp, sb.player.hp + heal);
+      this.events.emit('healed', { amount: heal, left: this.state.itemCount('tonic') });
+    });
+    sb.events.on('died', (d) => {
+      if (d.who !== sb.player) return;
+      if (this.encounter) this.events.emit('encounter', { id: this.encounter.id, status: 'lost' });
+      this.encounter = null;
+      this.events.emit('died', {});
+    });
+  }
+
+  /**
+   * A trigger's event (data/events.js).
+   * @param {string} id
+   */
+  runEvent(id) {
+    const ev = EVENTS[/** @type {keyof typeof EVENTS} */ (id)];
+    if (!ev) return;
+    if (ev.if && !evaluateCondition(ev.if, this.ctx)) return;
+    if (ev.once) {
+      if (this.state.flags.has(ev.once)) return;
+      this.state.flags.add(ev.once);
+    }
+    if (ev.banner) this.events.emit('banner', { text: ev.banner });
+    if (ev.effects) this.apply(ev.effects);
   }
 
   /**

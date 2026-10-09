@@ -1,0 +1,24 @@
+{
+  "$comment": "Played after the Hearth is lit, before the credits.",
+  "speaker": "Elder Ina",
+  "start": "one",
+  "nodes": {
+    "one": {
+      "speaker": "",
+      "text": "Light pours up the stairs. Somewhere far above, someone in Cinder Cove shouts. Then the first wisp lifts out of the fire, then three, then a hundred.",
+      "next": "two"
+    },
+    "two": {
+      "text": "Well. I came down all those stairs to tell you to be careful, and you've gone and fixed it. Look at them.",
+      "next": "three"
+    },
+    "three": {
+      "text": "Every lamp-stone in your crate is lit, {player}. Every stone in every lamp from here to Gull Isle will be by morning. The islands owe you a warm night.",
+      "next": "four"
+    },
+    "four": {
+      "text": "Now, come up. Bram's lit the forge, Wren's counting wisps, and Dorran is pretending he isn't crying.",
+      "end": true
+    }
+  }
+}

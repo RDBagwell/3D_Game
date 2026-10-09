@@ -1,5 +1,5 @@
 /*
- * Island Blade: page, HUD, menus, game-feel lab and touch controls.
+ * Emberwake: page, HUD, menus, dialogue, game-feel lab and touch controls.
  * Colours: deep violet ink, sunset orange, warm cream. No hearts, no rupees.
  */
 :root {
@@ -167,3 +167,60 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Area transitions: a short fade to black. */
 .fade { position: absolute; inset: 0; background: #07060b; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; z-index: 25; }
 .fade.on { opacity: 1; }
+
+/* ---- The adventure: shells, quick slot, interact prompt, toasts. ---- */
+.purse { position: absolute; left: 20px; top: 68px; padding: 3px 10px; border-radius: 99px; background: rgba(43, 29, 74, 0.8); border: 1px solid var(--orange-2); font-size: 13px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.purse-label { color: var(--orange-2); font-weight: 700; letter-spacing: 0.05em; }
+.purse-count { font-variant-numeric: tabular-nums; }
+.quickslot { position: absolute; right: 20px; bottom: 58px; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 14px; background: rgba(43, 29, 74, 0.82); border: 2px solid var(--orange); font-weight: 700; }
+.quickslot::before { content: ""; width: 18px; height: 24px; border-radius: 4px 4px 9px 9px; background: linear-gradient(180deg, var(--orange-2) 0 30%, var(--orange) 30%); box-shadow: inset 0 0 0 2px var(--cream); }
+.quickslot.empty { opacity: 0.55; border-color: var(--ink-3); }
+.quickslot kbd, .prompt kbd { padding: 1px 7px; border-radius: 6px; background: var(--cream); color: var(--ink); font: 700 13px/1.4 system-ui, sans-serif; }
+.prompt { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 99px; background: rgba(43, 29, 74, 0.88); border: 2px solid var(--cream); font-size: 16px; font-weight: 600; white-space: nowrap; }
+.toasts { position: absolute; right: 18px; top: 60px; display: grid; gap: 8px; width: min(340px, 60vw); }
+.toast { display: grid; gap: 2px; padding: 10px 14px; border-radius: var(--radius); background: rgba(43, 29, 74, 0.92); border-left: 5px solid var(--teal); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); animation: toast-in 0.25s ease-out; transition: opacity 0.5s, transform 0.5s; font-size: 14px; }
+.toast b { font-size: 14px; color: var(--cream); }
+.toast b:empty { display: none; }
+.toast span { color: var(--muted); }
+.toast.done { border-left-color: var(--orange); }
+.toast.notice { border-left-color: var(--orange-2); }
+.toast.notice span { color: var(--cream); }
+.toast.leaving { opacity: 0; transform: translateX(20px); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(20px); } }
+
+/* ---- The dialogue box. ---- */
+.dialogue { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); width: min(760px, 94vw); min-height: 128px; padding: 22px 26px 18px; border-radius: 18px; background: rgba(28, 19, 50, 0.95); border: 3px solid var(--cream); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); z-index: 15; pointer-events: auto; cursor: pointer; }
+.dialogue-speaker { position: absolute; left: 22px; top: -17px; padding: 4px 14px; border-radius: 10px; background: var(--orange); color: var(--ink); font-weight: 800; font-size: 15px; letter-spacing: 0.02em; }
+.dialogue-text { margin: 0; font-size: 19px; line-height: 1.5; min-height: 2.9em; }
+.dialogue.notice { border-color: var(--orange-2); }
+.dialogue.notice .dialogue-text { color: var(--orange-2); font-weight: 700; text-align: center; }
+.dialogue-choices { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: choice; }
+.dialogue-choices li { counter-increment: choice; padding: 8px 14px; border-radius: 10px; border: 2px solid var(--ink-3); background: var(--ink-2); font-size: 17px; }
+.dialogue-choices li::before { content: counter(choice) ". "; color: var(--muted); }
+.dialogue-choices li.selected { border-color: var(--orange); background: var(--ink-3); }
+.dialogue-choices li.selected::before { content: "▶ "; color: var(--orange); }
+.dialogue-choices li.unavailable { opacity: 0.45; cursor: not-allowed; font-style: italic; }
+.dialogue-next { position: absolute; right: 18px; bottom: 8px; color: var(--orange); animation: bob 0.8s ease-in-out infinite alternate; }
+@keyframes bob { to { transform: translateY(4px); } }
+
+/* ---- Quests, inventory, shop. ---- */
+.quest-log, .item-list, .shop-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; text-align: left; }
+.quest-log li, .item-list li, .shop-list li { padding: 12px 14px; border-radius: 12px; background: var(--ink-2); border: 2px solid var(--ink-3); }
+.quest-log h3, .item-list h3 { margin: 0 0 4px; font-size: 17px; }
+.quest-log p, .item-list p, .shop-list p { margin: 4px 0 0; color: var(--muted); }
+.quest-log li.main { border-color: var(--orange); }
+.quest-log li.done { opacity: 0.6; }
+.quest-log li.empty, .item-list li.empty { color: var(--muted); text-align: center; }
+.item-list small { color: var(--orange-2); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+.purse-line { margin: 0 0 12px; }
+.purse-line b { color: var(--orange-2); }
+.shop-list button { padding: 8px 14px; border-radius: 10px; border: 2px solid var(--orange); background: var(--ink-3); font-weight: 700; }
+.shop-list button:disabled { opacity: 0.45; border-color: var(--ink-3); cursor: not-allowed; }
+.touch-use { right: 214px; bottom: 30px; width: 64px; height: 64px; }
+.touch-tonic { right: 214px; bottom: 108px; width: 56px; height: 56px; font-size: 12px; }
+@media (max-width: 700px) {
+  .dialogue { bottom: 10px; padding: 18px 16px 14px; }
+  .dialogue-text { font-size: 16px; }
+  .prompt { bottom: 150px; font-size: 14px; }
+  .toasts { top: 120px; }
+}

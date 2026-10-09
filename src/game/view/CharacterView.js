@@ -141,6 +141,9 @@ export class CharacterView {
       case 'shield':
         this.setClip('shield', ANIMATIONS.shield);
         break;
+      case 'drink':
+        this.setClip(`drink:${entry}`, ANIMATIONS.drink, { loop: false, duration: PLAYER.drink.frames / 60 });
+        break;
       case 'strafe': {
         const m = pl.localMove;
         let clip = 'Idle';

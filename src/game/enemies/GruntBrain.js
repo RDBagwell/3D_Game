@@ -209,14 +209,14 @@ export class GruntBrain {
         },
       },
       hitstun: {
-        enter: () => ctx().releaseToken(this.id),
+        enter: () => this.ctx?.releaseToken(this.id),
         update: () => {
           stop();
           if (this.fsm.frames >= this.def.hitstunFrames) this.finishTurn();
         },
       },
       stagger: {
-        enter: () => ctx().releaseToken(this.id),
+        enter: () => this.ctx?.releaseToken(this.id),
         update: () => {
           stop();
           if (this.fsm.frames >= this.def.staggerFrames) this.finishTurn();
@@ -224,7 +224,8 @@ export class GruntBrain {
       },
       dead: {
         enter: () => {
-          ctx().releaseToken(this.id);
+          // (Possibly before its first update: beaten the moment it appeared.)
+          this.ctx?.releaseToken(this.id);
           stop();
         },
       },

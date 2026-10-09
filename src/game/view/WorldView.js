@@ -107,6 +107,7 @@ export class WorldView {
       this.addView(new CharacterView(makeNpc(models[def.model], def.hide), npc, 'npc'));
     }
     this.objectViews = sandbox.objects.map((o) => new ObjectView(o, models));
+    sandbox.events.on('spawned', (d) => this.addFoeView(d.foe));
     for (const v of this.objectViews) scene.add(v.root);
 
     scene.add(this.particles.object);
@@ -297,7 +298,10 @@ export class WorldView {
     this.particles.update(dt);
     this.time += dt;
     const checkpoint = this.checkpointObject();
-    for (const v of this.objectViews) v.update(dt, v.object.id === checkpoint);
+    for (const v of this.objectViews) {
+      v.update(dt, v.object.id === checkpoint);
+      if (v.opening && (v.def.type === 'gate' || v.def.type === 'door')) this.audio.play('gate', { position: v.object.position });
+    }
     for (const [i, t] of this.torches.entries()) {
       t.intensity = t.userData.base * (1 + Math.sin(this.time * 9 + i * 1.7) * 0.05 + Math.sin(this.time * 23 + i) * 0.04);
     }

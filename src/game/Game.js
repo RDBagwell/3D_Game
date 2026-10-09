@@ -18,6 +18,13 @@ import { GameState } from './adventure/GameState.js';
 import { AREAS, START } from './data/areas/index.js';
 import { OBJECTS } from './data/objects.js';
 import { buildArea } from './world/buildArea.js';
+import { DialogueBox } from './ui/DialogueBox.js';
+import { glyphFor } from './ui/Hud.js';
+import { NPCS } from './data/npcs.js';
+import { ITEMS } from './data/items.js';
+import { QUESTS } from './data/quests.js';
+import { SHOPS } from './data/shops.js';
+import { conditionContext, evaluateCondition } from './adventure/conditions.js';
 
 /**
  * Boots the game and runs it: loading screen, title, play, pause, the lab.
@@ -63,7 +70,7 @@ export class Game {
     this.audio.register(SOUNDS);
     this.audio.autoUnlock(window);
     this.music = new MusicManager(this.audio, { baseUrl: import.meta.env.BASE_URL, tracks: MUSIC_TRACKS });
-    /** @type {'loading' | 'title' | 'play' | 'paused' | 'travel'} */
+    /** @type {'loading' | 'title' | 'play' | 'paused' | 'travel' | 'talk' | 'shop'} */
     this.mode = 'loading';
     /** The adventure in progress (null on the title screen and in the lab). @type {Adventure | null} */
     this.adventure = null;
@@ -121,7 +128,13 @@ export class Game {
       quit: () => this.toTitle(),
       applySettings: (s) => this.applySettings(s),
       sound: (name) => this.audio.play(name),
+      quests: () => this.questLog(),
+      inventory: () => this.inventoryView(),
+      buy: (shop, item) => this.buy(shop, item),
+      closeShop: () => this.closeShop(),
     });
+    this.dialogue = new DialogueBox(this.overlay, { sound: (name) => this.audio.play(name) });
+    this.dialogue.onClose = () => this.endTalk();
     this.touch = new TouchControls(this.input, this.overlay, {
       surface: this.canvas,
       buttons: [
@@ -129,6 +142,8 @@ export class Game {
         { action: 'roll', label: 'Roll', className: 'touch-roll' },
         { action: 'shield', label: 'Shield', className: 'touch-shield' },
         { action: 'lockOn', label: 'Lock', className: 'touch-lock' },
+        { action: 'interact', label: 'Use', className: 'touch-use' },
+        { action: 'useItem', label: 'Tonic', className: 'touch-tonic' },
         { action: 'lab', label: 'Lab', className: 'touch-lab' },
         { action: 'pause', label: 'II', className: 'touch-pause' },
       ],
@@ -178,7 +193,7 @@ export class Game {
 
   /** Start a new adventure in the village. */
   async newGame() {
-    const state = new GameState();
+    const state = GameState.newGame();
     await this.startAdventure(state, START.area, START.spawn);
     this.hud.showBanner(AREAS[/** @type {keyof typeof AREAS} */ (START.area)].name, 2.5);
   }
@@ -202,8 +217,17 @@ export class Game {
       if (e.fresh) this.hud.showBanner('The hearthstone glows: you\'ll come back here if you fall.', 3);
       this.audio.play('checkpoint');
     });
-    adventure.events.on('notice', (e) => this.hud.showBanner(e.text, 2.5));
+    adventure.events.on('notice', (e) => this.hud.toast('', e.text, 'notice'));
+    adventure.events.on('banner', (e) => this.hud.showBanner(e.text, 3));
     adventure.events.on('switched', () => this.hud.showBanner('Somewhere ahead, a gate grinds open.', 2.5));
+    adventure.events.on('dialogue', (e) => this.startTalk(e.id, e.npc));
+    adventure.events.on('quest', (q) => {
+      const title = q.status === 'done' ? 'Quest complete' : q.status === 'new' ? 'New quest' : 'Quest updated';
+      this.hud.toast(`${title}: ${q.name}`, q.text, q.status);
+      this.audio.play(q.status === 'done' ? 'quest_done' : 'quest');
+    });
+    adventure.events.on('shells', (e) => this.view.floaters.add(`+${e.amount} shells`, { ...e.position, y: e.position.y + 1.6 }, 'note good'));
+    adventure.events.on('healed', (e) => this.audio.play('drink', null));
     await adventure.enter(area, spawn);
     await this.useSandbox(/** @type {Sandbox} */ (adventure.sandbox));
     this.prepareNeighbours();
@@ -264,6 +288,113 @@ export class Game {
     this.fade.style.transitionDuration = `${seconds}s`;
     this.fade.classList.toggle('on', to > 0);
     return new Promise((resolve) => setTimeout(resolve, seconds * 1000 + 30));
+  }
+
+  // ------------------------------------------------------------------ talking and shops
+
+  /**
+   * Open a conversation: the fight pauses, the camera frames the speaker.
+   * @param {string} id
+   * @param {string | null} npc
+   */
+  startTalk(id, npc) {
+    if (!this.adventure || this.mode !== 'play') return;
+    const runner = this.adventure.talk(id, npc);
+    this.mode = 'talk';
+    if (this.input.pointerLocked) {
+      this.releasingPointer = true;
+      this.input.exitPointerLock();
+    }
+    this.touch.hide();
+    this.hud.updatePrompt(null, '');
+    this.audio.play('talk');
+    this.dialogue.open(runner, settings.values.textSpeed);
+  }
+
+  /** The conversation closed: shop, travel, the ending, or back to play. */
+  endTalk() {
+    if (!this.adventure) return;
+    const after = this.adventure.finish();
+    this.mode = 'play';
+    this.updateTouch();
+    if (after.shop) this.openShop(after.shop);
+    else if (after.travel) void this.travel(after.travel.area, after.travel.spawn);
+    else if (after.ending) this.hud.showBanner('The Hearth burns again.', 4);
+  }
+
+  /** @param {string} id */
+  openShop(id) {
+    this.mode = 'shop';
+    this.input.exitPointerLock();
+    this.touch.hide();
+    this.menus.showShop(id, this.shopView(id));
+  }
+
+  closeShop() {
+    if (this.mode !== 'shop') return;
+    this.mode = 'play';
+    this.updateTouch();
+  }
+
+  /** @param {string} id */
+  shopView(id) {
+    const shop = SHOPS[/** @type {keyof typeof SHOPS} */ (id)];
+    const state = /** @type {Adventure} */ (this.adventure).state;
+    return {
+      name: shop.name,
+      shells: state.shells,
+      rows: shop.items.map((itemId) => {
+        const item = ITEMS[itemId];
+        return { id: itemId, name: item.name, description: item.description, price: /** @type {Record<string, number>} */ (shop.prices)[itemId] ?? item.price ?? 0, have: state.itemCount(itemId), max: item.stack };
+      }),
+    };
+  }
+
+  /**
+   * @param {string} shopId
+   * @param {string} itemId
+   */
+  buy(shopId, itemId) {
+    const state = /** @type {Adventure} */ (this.adventure).state;
+    const row = this.shopView(shopId).rows.find((r) => r.id === itemId);
+    let message = '';
+    if (!row) message = 'Not for sale.';
+    else if (row.have >= row.max) message = `You can't carry more than ${row.max}.`;
+    else if (state.shells < row.price) message = `Not enough shells: ${row.price} needed.`;
+    else {
+      state.shells -= row.price;
+      state.addItem(itemId, 1, row.max);
+      message = `Bought ${row.name}. ${state.shells} shells left.`;
+      this.audio.play('buy');
+    }
+    return { message, view: this.shopView(shopId) };
+  }
+
+  /** The quest log: started quests, main first. */
+  questLog() {
+    const state = this.adventure?.state;
+    if (!state) return [];
+    const ctx = conditionContext(state);
+    const out = [];
+    for (const quest of Object.values(QUESTS)) {
+      const done = evaluateCondition(quest.done, ctx);
+      let text = null;
+      for (const stage of quest.stages) if (evaluateCondition(stage.when, ctx)) text = stage.text;
+      if (done) text = quest.doneText;
+      if (text) out.push({ name: quest.name, text, done, main: Boolean(/** @type {any} */ (quest).main) });
+    }
+    return out.sort((a, b) => Number(b.main) - Number(a.main) || Number(a.done) - Number(b.done));
+  }
+
+  inventoryView() {
+    const state = this.adventure?.state;
+    if (!state) return null;
+    const order = { consumable: 0, upgrade: 1, key: 2 };
+    const items = [...state.items]
+      .filter(([id, n]) => n > 0 && ITEMS[id])
+      .map(([id, count]) => ({ id, count, ...ITEMS[id] }))
+      .sort((a, b) => order[a.type] - order[b.type]);
+    return { shells: state.shells, items };
   }
 
   /** The training grounds with the game-feel lab open. */
@@ -414,6 +545,11 @@ export class Game {
   update(dt) {
     const frame = this.input.sample(dt);
     if (this.mode === 'travel') return;
+    if (this.mode === 'talk') {
+      this.dialogue.update(dt, frame);
+      this.adventure?.talkStep();
+      return;
+    }
     if (this.mode !== 'play') {
       this.menus.handlePad(frame, this.input.lastDevice === 'gamepad');
       if (this.mode === 'title') {
@@ -438,6 +574,14 @@ export class Game {
     }
   }
 
+  /** "Talk · Elder Ina", "Open · the chest": what Interact does right now. */
+  promptLabel() {
+    const focus = this.sandbox?.focus;
+    if (!focus) return null;
+    if (focus.kind === 'npc') return `${focus.label} · ${NPCS[/** @type {keyof typeof NPCS} */ (focus.id)]?.name ?? ''}`;
+    return `${focus.label} · ${OBJECTS[focus.id]?.name ?? ''}`;
+  }
+
   toggleLab() {
     if (!this.lab.isOpen && this.input.pointerLocked) {
       this.releasingPointer = true;
@@ -458,13 +602,11 @@ export class Game {
     this.hud.updateHealth(dt, sb.player);
     const t = sb.lockTarget;
     this.hud.updateReticle(t ? this.view.project({ x: t.position.x, y: t.position.y + t.height * 0.6, z: t.position.z }) : null, t);
-    this.hud.updateHints({
-      device: this.input.lastDevice,
-      padStyle: this.input.gamepadStyle,
-      keys: settings.values.keys,
-      bindings: this.input.bindings,
-      enabled: settings.values.hints,
-    });
+    const device = { device: this.input.lastDevice, padStyle: this.input.gamepadStyle, keys: settings.values.keys, bindings: this.input.bindings };
+    this.hud.updateHints({ ...device, enabled: settings.values.hints && this.mode !== 'talk' });
+    const state = this.adventure?.state;
+    this.hud.updateInventory(state ? { shells: state.shells, tonics: state.itemCount('tonic') } : null, glyphFor('useItem', device));
+    this.hud.updatePrompt(this.mode === 'play' ? this.promptLabel() : null, glyphFor('interact', device));
     this.lab.update(sb);
     const info = this.view.renderer.info;
     this.perf.addPhysicsSample(sb.physics.lastStepMs);

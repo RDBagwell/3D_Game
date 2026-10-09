@@ -67,10 +67,13 @@ export const MODULE = 4 * DUNGEON_SCALE;
  * @property {RoomDef[]} [rooms]
  * @property {PropDef[]} [props]
  * @property {Record<string, { at: Vec3, yaw?: number }>} spawns
- * @property {{ type: string, name: string, at: Vec3, yaw?: number, unless?: Record<string, any>, defeat?: Record<string, any>[] }[]} [enemies]
- * @property {{ id: string, at: Vec3, yaw?: number, if?: Record<string, any> }[]} [npcs]
- * @property {{ id: string, at: Vec3, yaw?: number }[]} [objects]
- * @property {{ to: string, spawn?: string, at: Vec3, size: Vec3 }[]} [exits]
+ * @property {{ type: string, name: string, at: Vec3, yaw?: number, unless?: Record<string, any>, defeat?: Record<string, any>[], behind?: string }[]} [enemies]
+ *           `unless`: the enemy isn't there when this is true (a beaten boss); `defeat`: effects when it falls
+ * @property {{ id: string, at: Vec3, yaw?: number, behind?: string }[]} [npcs]
+ * @property {{ id: string, at: Vec3, yaw?: number, behind?: string }[]} [objects]
+ * @property {{ to: string, spawn?: string, at: Vec3, size: Vec3, behind?: string }[]} [exits]
+ *           `behind` (any placement): the gate or door object that must be open to reach it. Only the
+ *           content validator's reachability check reads it; the walls themselves do the blocking.
  * @property {{ id: string, at: Vec3, size: Vec3 }[]} [triggers]
  * @property {Record<string, Vec3>} [markers]
  * @property {{ at: Vec3, color?: number, intensity?: number, distance?: number }[]} [lights]

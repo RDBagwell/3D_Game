@@ -43,6 +43,8 @@ export class ObjectView {
     /** @type {PointLight | null} */
     this.light = null;
     this.checkpoint = false;
+    /** Open last frame (gates and doors sound when they open). */
+    this.wasOpen = object.open;
 
     const model = (/** @type {string | undefined} */ key) => {
       const gltf = key ? models[key] : null;
@@ -100,6 +102,15 @@ export class ObjectView {
         this.root.add(base, this.crystal);
         break;
       }
+      case 'pickup': {
+        const thing = model(def.model);
+        if (thing) this.closed.add(thing);
+        // A glint, so it can be found.
+        this.flame = new Mesh(new SphereGeometry(0.1, 8, 6), new MeshStandardMaterial({ color: 0xffffff, emissive: new Color(0xfff1c0), emissiveIntensity: 2 }));
+        this.flame.position.y = 0.7;
+        this.root.add(this.flame);
+        break;
+      }
       case 'hearthstone': {
         const stone = new Mesh(new CylinderGeometry(0.35, 0.55, 1.3, 6), new MeshStandardMaterial({ color: 0x8c8496, roughness: 0.95 }));
         stone.position.y = 0.65;
@@ -130,10 +141,14 @@ export class ObjectView {
   /**
    * @param {number} dt
    * @param {boolean} checkpoint  this hearthstone is the current checkpoint
+   * @returns {void}
    */
   update(dt, checkpoint) {
     const o = this.object;
     this.time += dt;
+    /** The object opened this frame. */
+    this.opening = o.open && !this.wasOpen;
+    this.wasOpen = o.open;
     this.root.visible = !o.hidden;
     const hasOpen = this.opened.children.length > 0;
     this.closed.visible = !o.open || !hasOpen;
@@ -156,6 +171,10 @@ export class ObjectView {
       const m = /** @type {MeshStandardMaterial} */ (this.flame.material);
       m.emissiveIntensity = lerp(m.emissiveIntensity, checkpoint ? 2.5 + Math.sin(this.time * 7) * 0.4 : 0, Math.min(1, dt * 4));
       this.flame.scale.setScalar(checkpoint ? 1.3 : 1);
+    }
+    if (this.flame && this.def.type === 'pickup') {
+      this.flame.position.y = 0.7 + Math.sin(this.time * 3) * 0.1;
+      this.flame.scale.setScalar(0.6 + Math.abs(Math.sin(this.time * 4)) * 0.8);
     }
     if (this.flame && this.def.type === 'hearth') {
       this.flame.visible = o.open;

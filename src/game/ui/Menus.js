@@ -22,7 +22,15 @@ import { settings, updateSettings, keysFor, keyLabel, rebindKey } from '../setti
  * @property {() => void} quit
  * @property {(s: import('../settings.js').Settings) => void} applySettings
  * @property {(name: string) => void} sound
+ * @property {() => QuestEntry[]} [quests]  the quest log (null outside the adventure)
+ * @property {() => InventoryView | null} [inventory]
+ * @property {(shopId: string, itemId: string) => { message: string, view: ShopView }} [buy]  buy one
+ * @property {() => void} [closeShop]
  */
+
+/** @typedef {{ name: string, text: string, done: boolean, main: boolean }} QuestEntry */
+/** @typedef {{ name: string, rows: { id: string, name: string, description: string, price: number, have: number, max: number }[], shells: number }} ShopView */
+/** @typedef {{ shells: number, items: { id: string, name: string, description: string, type: string, count: number }[] }} InventoryView */
 
 export class Menus {
   /**
@@ -69,15 +77,108 @@ export class Menus {
 
   showPause() {
     this.closeAll();
+    const adventure = Boolean(this.actions.inventory?.());
     this.push(this.screen('pause', `
       <h2>Paused</h2>
       <nav>
         <button data-do="resume" class="primary">Resume</button>
+        ${adventure ? '<button data-do="quests">Quests</button><button data-do="inventory">Inventory</button>' : ''}
+        <button data-do="settings">Settings</button>
         <button data-do="lab">Game-feel lab</button>
         <button data-do="controls">Controls</button>
-        <button data-do="settings">Settings</button>
         <button data-do="quit">Quit to title</button>
       </nav>`));
+  }
+
+  /** The quest log: the main quest first, then side quests; finished ones greyed. */
+  questsScreen() {
+    const quests = this.actions.quests?.() ?? [];
+    const el = this.screen('quests', `
+      <h2>Quests</h2>
+      <ul class="quest-log"></ul>
+      <nav><button data-do="back" class="primary">Back</button></nav>`);
+    const list = /** @type {HTMLElement} */ (el.querySelector('.quest-log'));
+    if (quests.length === 0) list.innerHTML = '<li class="empty">Nothing yet. Talk to people in the village.</li>';
+    for (const q of quests) {
+      const li = document.createElement('li');
+      li.className = `${q.done ? 'done' : ''} ${q.main ? 'main' : ''}`;
+      const h = document.createElement('h3');
+      h.textContent = `${q.main ? 'Main quest: ' : ''}${q.name}${q.done ? ' (complete)' : ''}`;
+      const p = document.createElement('p');
+      p.textContent = q.text;
+      li.append(h, p);
+      list.append(li);
+    }
+    return el;
+  }
+
+  /** What you carry: shells, the quick slot, upgrades and key items. */
+  inventoryScreen() {
+    const inv = this.actions.inventory?.() ?? { shells: 0, items: [] };
+    const el = this.screen('inventory', `
+      <h2>Inventory</h2>
+      <p class="purse-line">Shells: <b></b></p>
+      <ul class="item-list"></ul>
+      <nav><button data-do="back" class="primary">Back</button></nav>`);
+    /** @type {HTMLElement} */ (el.querySelector('.purse-line b')).textContent = String(inv.shells);
+    const list = /** @type {HTMLElement} */ (el.querySelector('.item-list'));
+    const kinds = { consumable: 'Quick slot', upgrade: 'Upgrade (always on)', key: 'Key item' };
+    for (const item of inv.items) {
+      const li = document.createElement('li');
+      const h = document.createElement('h3');
+      h.textContent = item.count > 1 ? `${item.name} ×${item.count}` : item.name;
+      const tag = document.createElement('small');
+      tag.textContent = kinds[/** @type {keyof typeof kinds} */ (item.type)] ?? '';
+      const p = document.createElement('p');
+      p.textContent = item.description;
+      li.append(h, tag, p);
+      list.append(li);
+    }
+    if (inv.items.length === 0) list.innerHTML = '<li class="empty">Empty pockets.</li>';
+    return el;
+  }
+
+  /**
+   * A shop, opened from dialogue. Buying is one press per item.
+   * @param {string} shopId
+   * @param {ShopView} view
+   */
+  showShop(shopId, view) {
+    this.closeAll();
+    const el = this.screen('shop', `
+      <h2></h2>
+      <p class="purse-line">Shells: <b></b></p>
+      <ul class="shop-list"></ul>
+      <p class="status" aria-live="polite"></p>
+      <nav><button data-do="close-shop" class="primary">Done</button></nav>`);
+    /** @type {HTMLElement} */ (el.querySelector('h2')).textContent = view.name;
+    const fill = (/** @type {typeof view} */ v) => {
+      /** @type {HTMLElement} */ (el.querySelector('.purse-line b')).textContent = String(v.shells);
+      const list = /** @type {HTMLElement} */ (el.querySelector('.shop-list'));
+      list.replaceChildren(
+        ...v.rows.map((r) => {
+          const li = document.createElement('li');
+          const b = document.createElement('button');
+          b.dataset.buy = r.id;
+          b.textContent = `Buy ${r.name}: ${r.price} shells`;
+          b.disabled = v.shells < r.price || r.have >= r.max;
+          const p = document.createElement('p');
+          p.textContent = `${r.description} You have ${r.have} (most ${r.max}).`;
+          li.append(b, p);
+          return li;
+        }),
+      );
+    };
+    fill(view);
+    el.addEventListener('click', (e) => {
+      const id = /** @type {HTMLElement} */ (e.target).dataset?.buy;
+      if (!id || !this.actions.buy) return;
+      const result = this.actions.buy(shopId, id);
+      /** @type {HTMLElement} */ (el.querySelector('.status')).textContent = result.message;
+      fill(result.view);
+      /** @type {HTMLElement | null} */ (el.querySelector(`[data-buy="${id}"]:not(:disabled)`) ?? el.querySelector('[data-do="close-shop"]'))?.focus();
+    });
+    this.push(el);
   }
 
   closeAll() {
@@ -98,6 +199,7 @@ export class Menus {
       this.root.hidden = true;
     }
     if (top?.dataset.screen === 'pause') this.actions.resume();
+    if (top?.dataset.screen === 'shop') this.actions.closeShop?.();
   }
 
   /** @param {HTMLElement} screen */
@@ -147,6 +249,16 @@ export class Menus {
         break;
       case 'controls':
         this.push(this.controlsScreen());
+        break;
+      case 'quests':
+        this.push(this.questsScreen());
+        break;
+      case 'inventory':
+        this.push(this.inventoryScreen());
+        break;
+      case 'close-shop':
+        this.closeAll();
+        this.actions.closeShop?.();
         break;
       case 'settings':
         this.push(this.settingsScreen());

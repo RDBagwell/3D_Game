@@ -10,6 +10,7 @@ import { attackPhase, isInFront } from '../combat/hitboxes.js';
  *     │      │      │                       │  ╲ roll (cancel window)
  *     └──────┴──────┴─→ roll, attack, shield ...
  *   any → hitstun → idle/run/strafe   any → knockdown → idle/run/strafe   any → dead
+ *   idle/run/strafe/shield → drink (a tonic from the quick slot) → idle/run/strafe
  *
  * TRANSITIONS below is the full table. Each state in `states()` owns:
  *   - its animation (ANIMATIONS, read by the view),
@@ -22,16 +23,17 @@ import { attackPhase, isInFront } from '../combat/hitboxes.js';
  * runs in Node for tests.
  */
 
-/** @typedef {'idle' | 'run' | 'strafe' | 'attack' | 'roll' | 'shield' | 'hitstun' | 'knockdown' | 'dead'} PlayerState */
+/** @typedef {'idle' | 'run' | 'strafe' | 'attack' | 'roll' | 'shield' | 'drink' | 'hitstun' | 'knockdown' | 'dead'} PlayerState */
 
 /** @type {Record<PlayerState, PlayerState[]>} */
 export const TRANSITIONS = {
-  idle: ['run', 'strafe', 'attack', 'roll', 'shield', 'hitstun', 'knockdown', 'dead'],
-  run: ['idle', 'strafe', 'attack', 'roll', 'shield', 'hitstun', 'knockdown', 'dead'],
-  strafe: ['idle', 'run', 'attack', 'roll', 'shield', 'hitstun', 'knockdown', 'dead'],
+  idle: ['run', 'strafe', 'attack', 'roll', 'shield', 'drink', 'hitstun', 'knockdown', 'dead'],
+  run: ['idle', 'strafe', 'attack', 'roll', 'shield', 'drink', 'hitstun', 'knockdown', 'dead'],
+  strafe: ['idle', 'run', 'attack', 'roll', 'shield', 'drink', 'hitstun', 'knockdown', 'dead'],
   attack: ['attack', 'idle', 'run', 'strafe', 'roll', 'hitstun', 'knockdown', 'dead'],
   roll: ['idle', 'run', 'strafe', 'attack', 'roll', 'hitstun', 'knockdown', 'dead'],
-  shield: ['idle', 'run', 'strafe', 'attack', 'roll', 'hitstun', 'knockdown', 'dead'],
+  shield: ['idle', 'run', 'strafe', 'attack', 'roll', 'drink', 'hitstun', 'knockdown', 'dead'],
+  drink: ['idle', 'run', 'strafe', 'hitstun', 'knockdown', 'dead'],
   hitstun: ['hitstun', 'idle', 'run', 'strafe', 'knockdown', 'dead'],
   knockdown: ['idle', 'run', 'strafe', 'dead'],
   dead: [],
@@ -44,6 +46,7 @@ export const ANIMATIONS = {
   strafe: 'Idle',
   roll: 'Dodge_Forward',
   shield: 'Blocking',
+  drink: 'Use_Item',
   hitstun: 'Hit_A',
   knockdown: 'Death_B',
   getUp: 'Lie_StandUp',
@@ -60,6 +63,7 @@ export const ANIMATIONS = {
  * @property {{ position: { x: number, y: number, z: number } } | null} lockTarget
  * @property {{ position: { x: number, y: number, z: number }, alive: boolean }[]} enemies  for aim assist
  * @property {(name: string, data?: any) => void} emit
+ * @property {() => boolean} [canUseItem]  the quick slot has something to use
  */
 
 /**
@@ -86,6 +90,8 @@ export class Player {
     this.height = PLAYER.height;
     this.maxHp = PLAYER.maxHp;
     this.hp = PLAYER.maxHp;
+    /** Multiplies the damage of every swing (the Tempered Blade). */
+    this.damageScale = 1;
     /** Yaw the hero faces (front = +Z rotated by yaw). */
     this.facing = yaw;
     /** Horizontal velocity, m/s. */
@@ -200,6 +206,10 @@ export class Player {
         enter: () => this.ctx?.emit('shieldUp', { position: this.position }),
         update: () => this.updateShield(),
       },
+      drink: {
+        enter: () => this.ctx?.emit('drinkStart', { position: this.position }),
+        update: () => this.updateDrink(),
+      },
       hitstun: {
         update: () => {
           this.slowDown(0.05);
@@ -239,6 +249,7 @@ export class Player {
       this.fsm.go('attack');
       return;
     }
+    if (this.tryDrink()) return;
     if (button(frame, 'shield').down) {
       this.fsm.go('shield');
       return;
@@ -379,10 +390,32 @@ export class Player {
     if (f >= PLAYER.roll.frames - 1) this.toLocomotion();
   }
 
+  /** Use the quick slot (a tonic) if Use item was pressed and there's one to use. */
+  tryDrink() {
+    const ctx = /** @type {PlayerContext} */ (this.ctx);
+    const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
+    if (!button(frame, 'useItem').pressed || !ctx.canUseItem?.()) return false;
+    return this.fsm.go('drink');
+  }
+
+  /**
+   * Drinking: a slow walk, then the tonic takes effect at DRINK.effectFrame.
+   * Hit before that and it's spilled (nothing used); after it, it's done.
+   */
+  updateDrink() {
+    const ctx = /** @type {PlayerContext} */ (this.ctx);
+    const f = this.fsm.frames;
+    const dir = this.moveDirection();
+    this.accelerate(dir.x * PLAYER.drink.speed, dir.z * PLAYER.drink.speed, PLAYER.runSpeed);
+    if (f === PLAYER.drink.effectFrame) ctx.emit('useItem', { position: this.position });
+    if (f >= PLAYER.drink.frames - 1) this.toLocomotion();
+  }
+
   updateShield() {
     const ctx = /** @type {PlayerContext} */ (this.ctx);
     const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
     if (this.tryRoll()) return;
+    if (this.tryDrink()) return;
     if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
       this.attackKey = 'slash1';
       this.fsm.go('attack');

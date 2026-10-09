@@ -1,0 +1,33 @@
+{
+  "$comment": "The cold Hearth at the bottom of the halls. With the Hearth Ember, this plays the ending.",
+  "speaker": "",
+  "start": "check",
+  "nodes": {
+    "check": {
+      "branch": [
+        { "if": { "hasItem": "hearth_ember" }, "next": "ember" },
+        { "if": { "flag": "warden_defeated" }, "next": "nothing" },
+        { "next": "cold" }
+      ]
+    },
+    "cold": {
+      "text": "A great stone bowl full of grey ash. It's as cold as a winter sea. The Warden stands between you and it.",
+      "end": true
+    },
+    "nothing": {
+      "text": "The ash is cold. You'll need something to light it with.",
+      "end": true
+    },
+    "ember": {
+      "text": "The Hearth Ember pulses in your hand, as if it knows where it is.",
+      "choices": [
+        { "text": "Set the ember in the ash.", "next": "light" },
+        { "text": "Not yet.", "end": true }
+      ]
+    },
+    "light": {
+      "text": "You lay the ember in the grey ash. For a long moment, nothing. Then a crackle, a breath of heat, and the Hearth catches.",
+      "effects": [{ "takeItem": "hearth_ember" }, { "setFlag": "hearth_lit" }, { "ending": true }]
+    }
+  }
+}

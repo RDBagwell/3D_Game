@@ -71,6 +71,15 @@ export const OBJECTS = {
     prompt: 'Unlock',
     dialogue: 'vault_door',
   },
+  satchel: {
+    type: 'pickup',
+    name: 'Wren\'s satchel',
+    model: 'sack',
+    scale: 6,
+    showIf: { all: [{ flag: 'wren_asked' }, { lacksItem: 'satchel' }, { notFlag: 'satchel_returned' }] },
+    prompt: 'Pick up',
+    dialogue: 'satchel',
+  },
   hearthstone_steps: { type: 'hearthstone', name: 'the hearthstone', checkpoint: 'entrance' },
   hearthstone_ante: { type: 'hearthstone', name: 'the hearthstone', checkpoint: 'ante' },
   hearth: {
@@ -86,4 +95,4 @@ export const OBJECTS = {
 /** How close you must be to use an object, metres. */
 export const USE_RANGE = 2.2;
 /** Walking this close to a hearthstone makes it your checkpoint. */
-export const HEARTHSTONE_RANGE = 2.6;
+export const HEARTHSTONE_RANGE = 3.5;

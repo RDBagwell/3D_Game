@@ -162,6 +162,63 @@ export const SOUNDS = {
       tone(ctx, out, t + 0.05, { type: 'triangle', from: 880, duration: 0.08, volume: 0.25 });
     },
   },
+  // ---- The adventure.
+  talk: {
+    volume: 0.35,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'triangle', from: 520, duration: 0.05, volume: 0.2 });
+      tone(ctx, out, t + 0.05, { type: 'triangle', from: 640, duration: 0.07, volume: 0.2 });
+    },
+  },
+  quest: {
+    volume: 0.45,
+    recipe: (ctx, out, t) => {
+      for (const [i, f] of [523, 659, 784].entries()) tone(ctx, out, t + i * 0.08, { type: 'triangle', from: f, duration: 0.18, volume: 0.22 });
+    },
+  },
+  quest_done: {
+    volume: 0.5,
+    recipe: (ctx, out, t) => {
+      for (const [i, f] of [523, 659, 784, 1047].entries()) tone(ctx, out, t + i * 0.09, { type: 'triangle', from: f, duration: 0.3, volume: 0.22 });
+    },
+  },
+  buy: {
+    volume: 0.4,
+    recipe: (ctx, out, t) => {
+      // Shells clinking.
+      for (const [i, f] of [1400, 1800, 1600].entries()) tone(ctx, out, t + i * 0.05, { type: 'sine', from: f, to: f * 0.9, duration: 0.07, volume: 0.25 });
+    },
+  },
+  drink: {
+    volume: 0.5,
+    recipe: (ctx, out, t) => {
+      tone(ctx, out, t, { type: 'sine', from: 300, to: 700, duration: 0.25, volume: 0.3 });
+      tone(ctx, out, t + 0.12, { type: 'triangle', from: 660, to: 990, duration: 0.3, volume: 0.15 });
+    },
+  },
+  checkpoint: {
+    caption: '[The hearthstone glows]',
+    volume: 0.5,
+    recipe: (ctx, out, t) => {
+      noise(ctx, out, t, { duration: 0.6, filter: 'lowpass', from: 400, to: 1800, volume: 0.25, attack: 0.2 });
+      tone(ctx, out, t, { type: 'sine', from: 220, to: 330, duration: 0.7, volume: 0.25, attack: 0.2 });
+    },
+  },
+  switch_hit: {
+    caption: '[The crystal rings]',
+    volume: 0.6,
+    recipe: (ctx, out, t) => {
+      for (const [i, f] of [1320, 1980, 2640].entries()) tone(ctx, out, t + i * 0.02, { type: 'sine', from: f, duration: 0.9, volume: 0.2 });
+    },
+  },
+  gate: {
+    caption: '[A gate grinds open]',
+    volume: 0.6,
+    recipe: (ctx, out, t) => {
+      noise(ctx, out, t, { duration: 1.1, filter: 'lowpass', from: 300, to: 150, volume: 0.7, attack: 0.1 });
+      tone(ctx, out, t, { type: 'sawtooth', from: 55, to: 45, duration: 1.1, volume: 0.12 });
+    },
+  },
 };
 
 /** Surfaces that have their own footstep sound. */

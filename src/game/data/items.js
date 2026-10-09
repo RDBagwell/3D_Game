@@ -68,6 +68,6 @@ export const ITEMS = {
 };
 
 /** Shells you start with. */
-export const START_SHELLS = 10;
+export const START_SHELLS = 24;
 /** Items you start with. */
 export const START_ITEMS = { lamp_crate: 1, tonic: 1 };

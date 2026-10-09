@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "screenshots": "playwright test --grep @screenshots",
-    "assets": "node tools/import-assets.mjs"
+    "assets": "node tools/import-assets.mjs",
+    "validate": "vitest run tests/content.test.js"
   },
   "engines": {
     "node": ">=20.19"

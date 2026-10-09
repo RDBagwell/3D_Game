@@ -1,0 +1,75 @@
+{
+  "$comment": "Elder Ina, by the Hearth gate. Gives the main quest and opens the gate.",
+  "speaker": "Elder Ina",
+  "start": "check",
+  "nodes": {
+    "check": {
+      "branch": [
+        { "if": { "flag": "hearth_lit" }, "next": "after" },
+        { "if": { "flag": "warden_defeated" }, "next": "ember" },
+        { "if": { "flag": "gate_open" }, "next": "waiting" },
+        { "if": { "flag": "ina_met" }, "next": "again" },
+        { "next": "hello" }
+      ]
+    },
+    "hello": {
+      "text": "A courier, in this weather? Let me guess. A crate of lamp-stones, and not one of them will light.",
+      "effects": [{ "setFlag": "ina_met" }],
+      "next": "hello2"
+    },
+    "hello2": {
+      "text": "They won't, dear. Nothing will. The Hearth under this hill went out a month ago, and every wisp in the islands was born in that fire.",
+      "next": "ask"
+    },
+    "again": { "text": "Back again, {player}? The Hearth's no warmer.", "next": "ask" },
+    "ask": {
+      "text": "What do you want to know?",
+      "choices": [
+        { "text": "What happened to the Hearth?", "next": "what" },
+        { "text": "Who looks after it?", "next": "who" },
+        { "text": "Can I help?", "next": "help" },
+        { "text": "I'll be back.", "end": true }
+      ]
+    },
+    "what": {
+      "text": "Nobody knows. One morning the wisps came out grey and slow, and by the evening there were none. Then the halls below filled with ash-bound bones.",
+      "next": "what2"
+    },
+    "what2": {
+      "text": "Bones held together by cold ash. They don't hate anyone. They just... won't let the fire be tended.",
+      "next": "ask"
+    },
+    "who": {
+      "text": "I do, with a key, a broom and too many stairs. And the Cinder Warden did, long before me: an old guardian built to keep the Hearth. It hasn't let anyone past since the fire died.",
+      "next": "ask"
+    },
+    "help": {
+      "text": "You've a sword, a shield and you're not afraid of an old woman with a key. That's more than the rest of Cinder Cove. Will you go down?",
+      "choices": [
+        { "text": "I'll go.", "effects": [{ "setFlag": "gate_open" }], "next": "go" },
+        { "text": "Not yet.", "next": "notyet" }
+      ]
+    },
+    "notyet": { "text": "Sensible. The gate will be here. So will I. So will the cold, unfortunately.", "end": true },
+    "go": {
+      "text": "Then the gate is open. Buy a few tonics from Bram at the forge first, and rest by the hearthstones down there: they remember who's passed.",
+      "next": "go2"
+    },
+    "go2": {
+      "text": "And {player}: the Warden isn't wicked. It's doing its job very, very badly. Bring back whatever's left of the fire.",
+      "end": true
+    },
+    "waiting": {
+      "text": "The gate's open. Down the steps, through the halls, and mind the bones. Tonics from Bram, rest at the hearthstones.",
+      "end": true
+    },
+    "ember": {
+      "text": "You're carrying light, {player}. I can see it through your fingers. The Hearth is at the very bottom, past the Warden's chamber. Set the ember in it.",
+      "end": true
+    },
+    "after": {
+      "text": "Listen. You can hear them, can't you? Wisps, humming in the chimney. Thank you, courier. Your crate's lit, by the way. Every stone.",
+      "end": true
+    }
+  }
+}

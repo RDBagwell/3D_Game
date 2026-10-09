@@ -36,6 +36,8 @@ export class Grunt {
     this.swingHits = new Set();
     /** Seconds until it respawns, once dead. */
     this.respawnTimer = 0;
+    /** The spawn point's name in its area (spawn_enemy_<type>_<name>), for defeat effects. */
+    this.spawnName = '';
   }
 
   get position() {

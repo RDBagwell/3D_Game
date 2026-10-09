@@ -1,4 +1,5 @@
 import { START } from '../data/areas/index.js';
+import { START_ITEMS, START_SHELLS } from '../data/items.js';
 
 /**
  * Everything about a playthrough that is saved: story flags, the bag, shells
@@ -23,6 +24,14 @@ export class GameState {
     /** Quest id -> index of the stage last announced (-1: not started). @type {Record<string, number>} */
     this.questStages = {};
     this.playTime = 0;
+  }
+
+  /** A fresh playthrough: the crate you're delivering, a tonic and a few shells. */
+  static newGame() {
+    const state = new GameState();
+    for (const [id, count] of Object.entries(START_ITEMS)) state.addItem(id, count);
+    state.shells = START_SHELLS;
+    return state;
   }
 
   /** @param {string} id */

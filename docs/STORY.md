@@ -21,7 +21,7 @@ as long as anyone remembers. A month ago it went out. The wisps are fading,
 the lamp-stones are going dark across the islands, and the stairs down to
 the Hearth Halls are full of ash-bound bones that walk.
 
-The player is a **courier** (you name them; the default is Ren), rowing
+The player is **Ren**, a courier rowing
 lamp-stone crates between islands. You land at Cinder Cove with a crate
 nobody can light.
 

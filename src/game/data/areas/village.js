@@ -146,8 +146,11 @@ export const village = {
     { id: 'wren', at: [-17.5, 0, 27.5], yaw: Math.PI * 0.8 },
     { id: 'dorran', at: [-13, 0, -9], yaw: -2.2 },
   ],
-  objects: [{ id: 'hearth_gate', at: [0, 0, -34.2] }],
-  exits: [{ to: 'halls', spawn: 'start', at: [0, 1.5, -39.5], size: [4, 3, 2] }],
+  objects: [
+    { id: 'hearth_gate', at: [0, 0, -34.2] },
+    { id: 'satchel', at: [22.8, 0, -15.6], yaw: 0.7 },
+  ],
+  exits: [{ to: 'halls', spawn: 'start', at: [0, 1.5, -39.5], size: [4, 3, 2], behind: 'hearth_gate' }],
   triggers: [{ id: 'ring', at: [-20, 1.5, -14], size: [13, 3, 13] }],
   markers: { ring_a: [-22, 0, -18], ring_b: [-17, 0, -19], ring_c: [-24, 0, -12], ring_d: [-19, 0, -9] },
 };

@@ -1,0 +1,22 @@
+{
+  "$comment": "The locked door out of the Key Vault. The Hearth Key opens it.",
+  "speaker": "",
+  "start": "check",
+  "nodes": {
+    "check": {
+      "branch": [
+        { "if": { "hasItem": "hearth_key" }, "next": "unlock" },
+        { "next": "locked" }
+      ]
+    },
+    "locked": {
+      "text": "Locked. The keyhole is shaped like a little flame. Somewhere in this room there must be a key.",
+      "end": true
+    },
+    "unlock": {
+      "text": "The Hearth Key turns with a satisfying clunk, and the door swings inward on a breath of warmer air.",
+      "effects": [{ "takeItem": "hearth_key" }, { "setFlag": "vault_door_open" }],
+      "end": true
+    }
+  }
+}

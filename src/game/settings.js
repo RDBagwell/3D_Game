@@ -20,6 +20,7 @@ import { DEFAULT_BINDINGS, REBINDABLE, STORAGE } from './config.js';
  * @property {number} sfxVolume     0..10
  * @property {'auto' | 'on' | 'off'} touch
  * @property {boolean} hints  show control hints on the HUD
+ * @property {'slow' | 'normal' | 'fast' | 'instant'} textSpeed  how fast dialogue types out
  * @property {Record<string, string[]>} keys  action -> keyboard codes, only actions the player changed
  */
 
@@ -37,6 +38,7 @@ export function defaultSettings() {
     sfxVolume: 8,
     touch: 'auto',
     hints: true,
+    textSpeed: 'normal',
     keys: {},
   };
 }
@@ -56,6 +58,7 @@ export function sanitizeSettings(raw) {
     if (Number.isInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 10) s[key] = raw[key];
   }
   if (['auto', 'on', 'off'].includes(raw.touch)) s.touch = raw.touch;
+  if (['slow', 'normal', 'fast', 'instant'].includes(raw.textSpeed)) s.textSpeed = raw.textSpeed;
   if (raw.keys && typeof raw.keys === 'object') {
     for (const { action } of REBINDABLE) {
       const codes = raw.keys[action];

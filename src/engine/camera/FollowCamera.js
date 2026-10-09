@@ -36,6 +36,9 @@ import { clamp, damp, dampFactor, angleDelta, approachAngle, lerp } from '../cor
  * @property {{ x: number, y: number }} look  radians to turn this update
  * @property {{ x: number, y: number, z: number } | null} lockTarget  feet of the locked-on enemy
  * @property {number | null} recenter  if set, swing behind a character facing this yaw
+ * @property {{ pivot: { x: number, y: number, z: number }, yaw: number, pitch: number, distance: number }} [shot]
+ *           a framed shot that overrides the follow camera (conversations): look at `pivot`
+ *           from this angle and distance; collision still applies
  */
 
 export class FollowCamera {
@@ -107,7 +110,13 @@ export class FollowCamera {
     if (input.recenter !== null) this.recenterYaw = input.recenter + Math.PI;
     if (lookMoved && !input.lockTarget) this.recenterYaw = null;
 
-    if (input.lockTarget && s.lockFraming) {
+    if (input.shot) {
+      // A framed shot (a conversation, a cutscene): swing to its angle.
+      const k = dampFactor(0.18, dt);
+      this.yaw += angleDelta(this.yaw, input.shot.yaw) * k;
+      this.pitch = damp(this.pitch, input.shot.pitch, 0.18, dt);
+      this.recenterYaw = null;
+    } else if (input.lockTarget && s.lockFraming) {
       // Put the camera on the far side of the player from the target.
       const dx = input.target.x - input.lockTarget.x;
       const dz = input.target.z - input.lockTarget.z;
@@ -133,7 +142,10 @@ export class FollowCamera {
       input.target.z + input.lead.z * s.lookAhead,
     );
     let wantedDistance = this.baseDistance;
-    if (input.lockTarget && s.lockFraming) {
+    if (input.shot) {
+      goal.set(input.shot.pivot.x, input.shot.pivot.y, input.shot.pivot.z);
+      wantedDistance = input.shot.distance;
+    } else if (input.lockTarget && s.lockFraming) {
       const t = new Vector3(input.lockTarget.x, input.lockTarget.y + this.pivotHeight * 0.8, input.lockTarget.z);
       const gap = Math.hypot(t.x - input.target.x, t.z - input.target.z);
       goal.lerp(t, 0.35);
