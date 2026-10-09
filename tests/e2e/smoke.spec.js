@@ -127,9 +127,11 @@ test.describe('smoke', () => {
       await page.mouse.up();
       expect(await page.evaluate(() => document.pointerLockElement?.tagName)).toBe('CANVAS');
       expect(await page.evaluate(() => /** @type {Game} */ (window).game.touch.visible)).toBe(false);
-      // Moving the captured mouse turns the camera.
+      // Moving the captured mouse turns the camera. The move is dispatched with
+      // a real movementX: headless Chromium's synthetic moves under pointer
+      // lock sometimes report no movement at all, which a real mouse never does.
       const yaw = await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.camera.yaw);
-      await page.mouse.move(900, 360, { steps: 5 });
+      await page.evaluate(() => window.dispatchEvent(new MouseEvent('mousemove', { movementX: 120, movementY: 0 })));
       await page.waitForFunction((y) => /** @type {Game} */ (window).game.sandbox.camera.yaw !== y, yaw, { timeout: 30_000 });
       expect(errors).toEqual([]);
       await context.close();
