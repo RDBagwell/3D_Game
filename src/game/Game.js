@@ -13,14 +13,23 @@ import { WorldView } from './view/WorldView.js';
 import { Hud } from './ui/Hud.js';
 import { Menus } from './ui/Menus.js';
 import { LabPanel } from './lab/LabPanel.js';
-import { buildTrainingGrounds } from './scenes/trainingGrounds.js';
+import { Adventure } from './adventure/Adventure.js';
+import { GameState } from './adventure/GameState.js';
+import { AREAS, START } from './data/areas/index.js';
+import { OBJECTS } from './data/objects.js';
+import { buildArea } from './world/buildArea.js';
 
 /**
  * Boots the game and runs it: loading screen, title, play, pause, the lab.
  *
  *   loading ──▶ title ──Play──▶ play ⇄ paused (pause menu)
- *                  └──Game-feel lab──▶ play with the lab open
+ *                  │              ⇅ travel (fade out, next area, fade in)
+ *                  └──Game-feel lab──▶ the training grounds with the lab open
  *   `?lab` in the address skips the title and opens the lab.
+ *
+ * Play runs an Adventure (src/game/adventure/): the game state and the
+ * current area's simulation. The lab runs a bare Sandbox in the training
+ * grounds. Either way `this.sandbox` is what's simulated and drawn.
  *
  * One FixedStepLoop drives everything. Each update samples input once; in
  * play it becomes the simulation's InputFrame (Sandbox.step), in menus it
@@ -54,9 +63,14 @@ export class Game {
     this.audio.register(SOUNDS);
     this.audio.autoUnlock(window);
     this.music = new MusicManager(this.audio, { baseUrl: import.meta.env.BASE_URL, tracks: MUSIC_TRACKS });
-    /** @type {'loading' | 'title' | 'play' | 'paused'} */
+    /** @type {'loading' | 'title' | 'play' | 'paused' | 'travel'} */
     this.mode = 'loading';
-    this.seenArena = false;
+    /** The adventure in progress (null on the title screen and in the lab). @type {Adventure | null} */
+    this.adventure = null;
+    /** What is simulated and drawn right now. @type {Sandbox} */
+    this.sandbox = /** @type {any} */ (null);
+    /** Seconds until the fallen player is brought back (0: not waiting). */
+    this.reviveTimer = 0;
     /** The first-play hint has been shown. */
     this.greeted = false;
     /** Set when the game itself releases the mouse (opening the lab), so it doesn't pause. */
@@ -73,11 +87,10 @@ export class Game {
       label.textContent = `Loading ${((p * total) / 1e6).toFixed(1)} / ${(total / 1e6).toFixed(1)} MB`;
     });
 
-    this.sandbox = await Sandbox.create({ levelRoot: buildTrainingGrounds(), feel: this.feel });
+    this.models = models;
     this.view = new WorldView({
       canvas: this.canvas,
       overlay: this.overlay,
-      sandbox: this.sandbox,
       models,
       audio: this.audio,
       input: this.input,
@@ -96,11 +109,14 @@ export class Game {
       onClose: () => {},
     });
     this.menus = new Menus(this.root, {
-      play: () => this.play(),
+      play: () => void this.newGame().then(() => this.play()),
       resume: () => this.resume(),
       openLab: () => {
-        this.play();
-        this.lab.open();
+        if (this.mode === 'title') void this.openLab();
+        else {
+          this.resume();
+          this.lab.open();
+        }
       },
       quit: () => this.toTitle(),
       applySettings: (s) => this.applySettings(s),
@@ -120,6 +136,11 @@ export class Game {
     this.audio.onCaption = (text) => {
       if (settings.values.captions && this.mode === 'play') this.hud.caption(text);
     };
+    this.fade = document.createElement('div');
+    this.fade.className = 'fade';
+    this.root.append(this.fade);
+    // The title screen looks out over the village.
+    await this.useSandbox(await Sandbox.create({ area: 'village', models, feel: this.feel, grunts: false }));
     this.listen();
     this.applySettings(settings.values);
     this.setShow(this.show);
@@ -135,20 +156,134 @@ export class Game {
 
     /** @type {HTMLElement} */ (this.root.querySelector('.loading')).remove();
     if (this.openLabAtStart) {
-      this.play();
-      this.lab.open();
+      await this.openLab();
     } else {
       this.toTitle();
     }
+  }
+
+  /**
+   * Simulate and draw a sandbox (an area of the adventure, or the lab's).
+   * @param {Sandbox} sandbox
+   */
+  async useSandbox(sandbox) {
+    if (this.sandbox && this.sandbox !== sandbox && this.sandbox !== this.adventure?.sandbox) this.sandbox.dispose();
+    this.sandbox = sandbox;
+    sandbox.setFeel(this.feel);
+    this.view.setSandbox(sandbox);
+    this.listenSandbox(sandbox);
+  }
+
+  // ------------------------------------------------------------------ the adventure
+
+  /** Start a new adventure in the village. */
+  async newGame() {
+    const state = new GameState();
+    await this.startAdventure(state, START.area, START.spawn);
+    this.hud.showBanner(AREAS[/** @type {keyof typeof AREAS} */ (START.area)].name, 2.5);
+  }
+
+  /**
+   * @param {GameState} state
+   * @param {string} area
+   * @param {string} spawn
+   */
+  async startAdventure(state, area, spawn) {
+    this.adventure?.dispose();
+    const adventure = new Adventure(state, { feel: () => this.feel, models: this.models });
+    this.adventure = adventure;
+    this.view.checkpointObject = () => this.checkpointObject();
+    adventure.events.on('travel', (e) => void this.travel(e.area, e.spawn));
+    adventure.events.on('died', () => {
+      this.reviveTimer = 2.6;
+      this.hud.showBanner('You fell. The hearthstone will bring you back…', 2.4);
+    });
+    adventure.events.on('checkpoint', (e) => {
+      if (e.fresh) this.hud.showBanner('The hearthstone glows: you\'ll come back here if you fall.', 3);
+      this.audio.play('checkpoint');
+    });
+    adventure.events.on('notice', (e) => this.hud.showBanner(e.text, 2.5));
+    adventure.events.on('switched', () => this.hud.showBanner('Somewhere ahead, a gate grinds open.', 2.5));
+    await adventure.enter(area, spawn);
+    await this.useSandbox(/** @type {Sandbox} */ (adventure.sandbox));
+    this.prepareNeighbours();
+  }
+
+  /** The hearthstone that is the current checkpoint, if it's in this area. */
+  checkpointObject() {
+    const state = this.adventure?.state;
+    if (!state || state.checkpoint.area !== state.area) return null;
+    const entry = Object.entries(OBJECTS).find(([, def]) => def.type === 'hearthstone' && def.checkpoint === state.checkpoint.spawn);
+    return entry ? entry[0] : null;
+  }
+
+  /**
+   * Fade out, move to another area, fade in.
+   * @param {string} area
+   * @param {string} spawn
+   * @param {{ respawn?: boolean }} [options]
+   */
+  async travel(area, spawn, { respawn = false } = {}) {
+    if (!this.adventure || this.mode === 'travel') return;
+    const previous = this.mode;
+    this.mode = 'travel';
+    this.input.enabled = false;
+    await this.fadeTo(1);
+    if (respawn) await this.adventure.respawn();
+    else await this.adventure.enter(area, spawn);
+    await this.useSandbox(/** @type {Sandbox} */ (this.adventure.sandbox));
+    this.music.play(this.adventure.area.music);
+    this.mode = previous === 'paused' ? 'play' : 'play';
+    this.input.enabled = true;
+    this.updateTouch();
+    void this.fadeTo(0);
+    if (!respawn) this.hud.showBanner(this.adventure.area.name, 2.2);
+    this.prepareNeighbours();
+  }
+
+  /** Build and compile the areas this one's exits lead to, so stepping through is quick. */
+  prepareNeighbours() {
+    const adventure = this.adventure;
+    if (!adventure) return;
+    const next = new Set((adventure.area.exits ?? []).map((e) => e.to));
+    const idle = window.requestIdleCallback ?? ((/** @type {() => void} */ fn) => setTimeout(fn, 200));
+    for (const id of next) {
+      idle(() => {
+        if (this.adventure !== adventure || adventure.prepared.has(id)) return;
+        const root = adventure.prepare(id, (areaId) => buildArea(AREAS[/** @type {keyof typeof AREAS} */ (areaId)], this.models));
+        void this.view.precompile(root);
+      });
+    }
+  }
+
+  /**
+   * @param {number} to  0 clear, 1 black
+   * @param {number} [seconds=0.35]
+   */
+  fadeTo(to, seconds = 0.35) {
+    this.fade.style.transitionDuration = `${seconds}s`;
+    this.fade.classList.toggle('on', to > 0);
+    return new Promise((resolve) => setTimeout(resolve, seconds * 1000 + 30));
+  }
+
+  /** The training grounds with the game-feel lab open. */
+  async openLab() {
+    this.adventure?.dispose();
+    this.adventure = null;
+    this.view.checkpointObject = () => null;
+    await this.useSandbox(await Sandbox.create({ area: 'training', models: this.models, feel: this.feel }));
+    this.play();
+    this.lab.open();
   }
 
   // ------------------------------------------------------------------ modes
 
   toTitle() {
     if (this.mode === 'play' || this.mode === 'paused') {
-      const s = this.sandbox.playerSpawn;
-      this.sandbox.player.respawn(s.position, s.yaw, (p) => this.sandbox.player.body.teleport?.(p));
-      this.sandbox.setLock(null);
+      this.adventure?.dispose();
+      this.adventure = null;
+      this.view.checkpointObject = () => null;
+      void Sandbox.create({ area: 'village', models: this.models, feel: this.feel, grunts: false }).then((sb) => this.useSandbox(sb));
     }
     this.mode = 'title';
     this.input.enabled = false;
@@ -165,11 +300,13 @@ export class Game {
     this.input.enabled = true;
     this.hud.setVisible(true);
     this.updateTouch();
-    this.music.play(MUSIC.sandbox);
+    this.music.play(this.sandbox.area.music);
     if (!this.greeted) {
       this.greeted = true;
       const touch = this.touch.visible;
-      this.hud.showBanner(touch ? 'Hit the training dummy. Lab: the Lab button.' : 'Click the game to steer the camera with the mouse. Tab opens the game-feel lab.', 4);
+      const lab = !this.adventure;
+      if (touch) this.hud.showBanner(lab ? 'Hit the training dummy. Lab: the Lab button.' : 'Left thumb moves, drag on the right to look.', 4);
+      else this.hud.showBanner('Click the game to steer the camera with the mouse. Tab opens the game-feel lab.', 4);
     }
   }
 
@@ -229,20 +366,24 @@ export class Game {
 
   // ------------------------------------------------------------------ events
 
+  /**
+   * Messages for the lab's training grounds.
+   * @param {Sandbox} sandbox
+   */
+  listenSandbox(sandbox) {
+    if (sandbox.area.id !== 'training') return;
+    let seenArena = false;
+    sandbox.events.on('died', (d) => {
+      if (d.who === sandbox.player) this.hud.showBanner('You fell. Back on your feet in a moment…', 2.4);
+    });
+    sandbox.events.on('triggerEnter', (d) => {
+      if (d.id !== 'arena' || seenArena) return;
+      seenArena = true;
+      this.hud.showBanner('The arena: three grunts. Watch for the wind-up.', 3);
+    });
+  }
+
   listen() {
-    const ev = this.sandbox.events;
-    ev.on('died', (d) => {
-      if (d.who === this.sandbox.player) this.hud.showBanner('You fell. Back on your feet in a moment…', 2.4);
-    });
-    ev.on('triggerEnter', (d) => {
-      if (d.id !== 'arena') return;
-      if (!this.seenArena) this.hud.showBanner('The arena: three grunts. Watch for the wind-up.', 3);
-      this.seenArena = true;
-      this.music.play(MUSIC.combat);
-    });
-    ev.on('triggerExit', (d) => {
-      if (d.id === 'arena' && this.sandbox.player.position.z > -18) this.music.play(MUSIC.sandbox);
-    });
 
     // Follow the pointer actually in use (capture phase: before anything else sees it).
     window.addEventListener(
@@ -272,6 +413,7 @@ export class Game {
   /** @param {number} dt */
   update(dt) {
     const frame = this.input.sample(dt);
+    if (this.mode === 'travel') return;
     if (this.mode !== 'play') {
       this.menus.handlePad(frame, this.input.lastDevice === 'gamepad');
       if (this.mode === 'title') {
@@ -285,7 +427,15 @@ export class Game {
     if (button(frame, 'pause').pressed) return void this.pause();
     if (button(frame, 'lab').pressed) this.toggleLab();
     if (button(frame, 'debug').pressed) this.setShow({ ...this.show, perf: !this.show.perf, colliders: !this.show.perf });
-    this.sandbox.step(frame);
+    if (this.adventure) {
+      this.adventure.step(frame, dt);
+      if (this.reviveTimer > 0) {
+        this.reviveTimer -= dt;
+        if (this.reviveTimer <= 0) void this.travel('', '', { respawn: true });
+      }
+    } else {
+      this.sandbox.step(frame);
+    }
   }
 
   toggleLab() {

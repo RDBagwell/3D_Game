@@ -56,8 +56,8 @@ export class Menus {
   showTitle() {
     this.closeAll();
     this.push(this.screen('title', `
-      <h1 class="logo">Island <span>Blade</span></h1>
-      <p class="tagline">A combat sandbox with a built-in game-feel lab</p>
+      <h1 class="logo">Ember<span>wake</span></h1>
+      <p class="tagline">A short adventure on Cinder Isle, with a built-in game-feel lab</p>
       <nav>
         <button data-do="play" class="primary">Play</button>
         <button data-do="lab">Game-feel lab</button>

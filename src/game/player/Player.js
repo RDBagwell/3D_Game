@@ -131,6 +131,12 @@ export class Player {
     return this.fsm.current;
   }
 
+  /** Free to do something else (not attacking, rolling, hurt or down): talking, opening, using an item. */
+  get canAct() {
+    const s = this.fsm.current;
+    return s === 'idle' || s === 'run' || s === 'strafe';
+  }
+
   /** Frames into the current state. */
   get stateFrames() {
     return this.fsm.frames;

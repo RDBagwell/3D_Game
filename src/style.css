@@ -163,3 +163,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .reticle i { animation: none; }
 }
+
+/* Area transitions: a short fade to black. */
+.fade { position: absolute; inset: 0; background: #07060b; opacity: 0; pointer-events: none; transition: opacity 0.35s ease; z-index: 25; }
+.fade.on { opacity: 1; }

@@ -1,0 +1,76 @@
+import { describe, it, expect } from 'vitest';
+import { Sandbox } from '../src/game/sim/Sandbox.js';
+import { AREAS } from '../src/game/data/areas/index.js';
+
+/**
+ * The areas, simulated headless: everyone stands on solid ground, exits lead
+ * somewhere real, and the dungeon can be walked end to end once its gates are
+ * open (doorways wide enough, no stray colliders).
+ */
+
+const idle = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: {} };
+/** Walk "forward" relative to the camera, which starts behind the player. */
+const forward = { move: { x: 0, y: 1 }, look: { x: 0, y: 0 }, buttons: {} };
+
+describe('areas', () => {
+  for (const id of Object.keys(AREAS)) {
+    it(`${id}: every spawn stands on the ground`, async () => {
+      const area = AREAS[/** @type {keyof typeof AREAS} */ (id)];
+      const names = Object.keys(area.spawns).length ? Object.keys(area.spawns) : ['start'];
+      for (const spawn of names) {
+        const sb = await Sandbox.create({ area: id, spawn, grunts: false });
+        for (let i = 0; i < 30; i++) sb.step(idle);
+        expect(sb.player.body.grounded, `${id}/${spawn}`).toBe(true);
+        expect(sb.player.position.y, `${id}/${spawn}`).toBeGreaterThan(-0.1);
+        sb.dispose();
+      }
+    });
+  }
+
+  it('every exit leads to an area and spawn that exist', async () => {
+    for (const area of Object.values(AREAS)) {
+      for (const exit of area.exits ?? []) {
+        const target = AREAS[/** @type {keyof typeof AREAS} */ (exit.to)];
+        expect(target, `${area.id} → ${exit.to}`).toBeTruthy();
+        expect(Object.keys(target.spawns), `${area.id} → ${exit.to}:${exit.spawn}`).toContain(exit.spawn ?? 'start');
+      }
+    }
+  });
+
+  it('the Hearth Halls can be walked from the entrance to the Hearth once the gates are open', async () => {
+    const sb = await Sandbox.create({ area: 'halls', grunts: false });
+    for (const o of sb.objects) sb.setObject(o.id, { open: o.type !== 'hearth' });
+    const start = sb.player.position.z;
+    let steps = 0;
+    while (sb.player.position.z > -90 && steps < 60 * 30) {
+      // Keep to the middle of the corridors.
+      const x = sb.player.position.x;
+      sb.step({ ...forward, move: { x: Math.max(-1, Math.min(1, -x * 2)), y: 1 } });
+      steps++;
+    }
+    expect(start).toBeGreaterThan(0);
+    expect(sb.player.position.z).toBeLessThanOrEqual(-90);
+    sb.dispose();
+  });
+
+  it('closed gates block the way', async () => {
+    const sb = await Sandbox.create({ area: 'halls', grunts: false });
+    for (let i = 0; i < 60 * 12; i++) sb.step({ ...forward, move: { x: Math.max(-1, Math.min(1, -sb.player.position.x * 2)), y: 1 } });
+    // Stopped at the Switch Hall's portcullis (z = -28.5).
+    expect(sb.player.position.z).toBeGreaterThan(-28.5);
+    expect(sb.player.position.z).toBeLessThan(-25);
+    sb.dispose();
+  });
+
+  it('walking into an exit reports it once', async () => {
+    const sb = await Sandbox.create({ area: 'halls', spawn: 'entrance', grunts: false });
+    /** @type {any[]} */
+    const exits = [];
+    sb.events.on('exit', (e) => exits.push(e));
+    sb.player.facing = 0;
+    sb.camera.reset(sb.player.position, 0);
+    for (let i = 0; i < 120; i++) sb.step(forward);
+    expect(exits).toEqual([{ area: 'village', spawn: 'gate' }]);
+    sb.dispose();
+  });
+});

@@ -28,7 +28,7 @@ export class CharacterView {
   /**
    * @param {import('./models.js').CharacterModel} model
    * @param {any} actor  Player, Grunt or Dummy
-   * @param {'player' | 'grunt' | 'dummy'} kind
+   * @param {'player' | 'grunt' | 'dummy' | 'npc'} kind
    */
   constructor(model, actor, kind) {
     this.model = model;
@@ -87,6 +87,7 @@ export class CharacterView {
 
     if (this.kind === 'player') this.animatePlayer();
     else if (this.kind === 'grunt') this.animateGrunt();
+    else if (this.kind === 'npc') this.setClip('idle', 'Idle');
     else this.animateDummy(dt);
 
     this.animator.defaultFade = this.crossFade;

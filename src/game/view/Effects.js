@@ -107,6 +107,12 @@ export class Floaters {
     if (this.items.length > 30) this.items.shift()?.el.remove();
   }
 
+  /** Remove every floating text (changing area). */
+  clear() {
+    for (const item of this.items) item.el.remove();
+    this.items = [];
+  }
+
   /**
    * @param {number} dt
    * @param {import('three').Camera} camera

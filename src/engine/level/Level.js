@@ -22,6 +22,7 @@ import { parseNodeName } from './levelNames.js';
 
 /** @typedef {{ position: Vector3, yaw: number }} Spawn */
 /** @typedef {{ type: string, name: string, position: Vector3, yaw: number }} EnemySpawn */
+/** @typedef {{ id: string, position: Vector3, yaw: number }} Placement */
 
 export class Level {
   /**
@@ -35,6 +36,14 @@ export class Level {
     this.spawns = { player: {}, enemies: [] };
     /** @type {{ id: string, box: Box3 }[]} */
     this.triggers = [];
+    /** Walk-in exits to other areas. @type {{ area: string, spawn: string, box: Box3 }[]} */
+    this.exits = [];
+    /** Where characters stand (npc_<id>). @type {Placement[]} */
+    this.npcs = [];
+    /** Where interactive objects stand (object_<id>). @type {Placement[]} */
+    this.objects = [];
+    /** Named points (marker_<name>). @type {Record<string, Vector3>} */
+    this.markers = {};
     /** Number of physics colliders made. */
     this.colliderCount = 0;
     /** Which triggers each actor is inside: actorId -> set of trigger indexes. @type {Map<string, Set<number>>} */
@@ -97,6 +106,23 @@ export class Level {
           hide.push(object);
           break;
         }
+        case 'exit': {
+          level.exits.push({ area: meaning.area, spawn: meaning.spawn, box: new Box3().setFromObject(object) });
+          hide.push(object);
+          break;
+        }
+        case 'npc':
+        case 'object': {
+          const list = meaning.kind === 'npc' ? level.npcs : level.objects;
+          list.push({ id: meaning.id, position: object.getWorldPosition(new Vector3()), yaw: worldYaw(object) });
+          hide.push(object);
+          break;
+        }
+        case 'marker': {
+          level.markers[meaning.name] = object.getWorldPosition(new Vector3());
+          hide.push(object);
+          break;
+        }
         default:
           break;
       }
@@ -116,6 +142,15 @@ export class Level {
       if (area.box.containsPoint(p)) return area.surface;
     }
     return this.defaultSurface;
+  }
+
+  /**
+   * The exit an actor is standing in, or null.
+   * @param {{ x: number, y: number, z: number }} position
+   */
+  exitAt(position) {
+    const p = new Vector3(position.x, position.y + 0.5, position.z);
+    return this.exits.find((e) => e.box.containsPoint(p)) ?? null;
   }
 
   /**

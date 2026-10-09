@@ -30,7 +30,7 @@ import { KNIGHT_HIDDEN } from '../data/assets.js';
  * KayKit's characters are about 2.5 units tall. These scales make them
  * match the physics capsules (data/actors.js): the hero about 1.75 m.
  */
-const SCALE = { knight: 0.72, grunt: 0.7, dummy: 0.8 };
+const SCALE = { knight: 0.72, grunt: 0.7, dummy: 0.8, npc: 0.7 };
 
 /**
  * @param {MaybeGltf} gltf
@@ -72,6 +72,22 @@ export function makeGrunt(gltf, blade, shield) {
   if (left && shield) left.add(shield.scene.clone(true));
   root.scale.setScalar(SCALE.grunt);
   return finish(root, gltf.animations, weapon);
+}
+
+/**
+ * A villager: a KayKit adventurer with most of its gear hidden.
+ * @param {MaybeGltf} gltf
+ * @param {string[]} hide  mesh names to hide
+ * @returns {CharacterModel}
+ */
+export function makeNpc(gltf, hide) {
+  if (!gltf) return placeholderCharacter(0x9a6fd0, 0xf2e3c4);
+  const root = cloneSkinned(gltf.scene);
+  root.traverse((o) => {
+    if (hide.includes(o.name)) o.visible = false;
+  });
+  root.scale.setScalar(SCALE.npc);
+  return finish(root, gltf.animations, []);
 }
 
 /**

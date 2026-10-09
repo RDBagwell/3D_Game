@@ -1,18 +1,22 @@
-import { createPhysics, Level, EventBus, InputBuffer, FollowCamera, Rng, button, yawFromDirection } from '../../engine/index.js';
+import { createPhysics, Level, EventBus, InputBuffer, FollowCamera, Rng, button, yawFromDirection, approachAngle, angleDelta } from '../../engine/index.js';
 import { TICK } from '../config.js';
 import { PLAYER, ENEMIES } from '../data/actors.js';
 import { Player } from '../player/Player.js';
 import { Grunt } from '../enemies/Grunt.js';
 import { Dummy } from '../enemies/Dummy.js';
-import { resolveSwing, attackPhase } from '../combat/hitboxes.js';
+import { resolveSwing, attackPhase, hitSpheresAt } from '../combat/hitboxes.js';
 import { selectTarget, switchTarget, shouldBreakLock } from '../combat/lockOn.js';
 import { defaultFeel } from '../feel/feelSettings.js';
-import { buildTrainingGrounds, PROPS } from '../scenes/trainingGrounds.js';
+import { buildArea } from '../world/buildArea.js';
+import { AREAS } from '../data/areas/index.js';
+import { NPCS, TALK_RANGE } from '../data/npcs.js';
+import { OBJECTS, USE_RANGE, HEARTHSTONE_RANGE } from '../data/objects.js';
 
 /**
- * The whole simulation of the combat sandbox, advanced one fixed step at a
- * time by `step(inputFrame)`. It owns the physics world, the level, the
- * player, the enemies, the camera's simulated state, lock-on and combat.
+ * The whole simulation of one area, advanced one fixed step at a time by
+ * `step(inputFrame)`. It owns the physics world, the level, the player, the
+ * enemies, the people and objects in the area, the camera's simulated state,
+ * lock-on and combat.
  *
  * It never draws or plays sound. It emits events ('hit', 'block', 'dodge',
  * 'swing', 'footstep', 'windup', 'lockOn'...) that the presentation layer
@@ -28,7 +32,13 @@ import { buildTrainingGrounds, PROPS } from '../scenes/trainingGrounds.js';
  *   5. player, then enemies, decide and move (character controller)
  *   6. physics step
  *   7. hitboxes against hurtboxes: hits, blocks, dodges, hit-stop
- *   8. camera, triggers, respawns
+ *   8. camera, triggers, exits, what the player can interact with, respawns
+ *
+ * Areas: a village, a dungeon, the training grounds (src/game/data/areas/).
+ * The adventure layer (src/game/adventure/) decides what objects look like
+ * and what talking or opening does; the sandbox only knows where things are,
+ * what is solid, and when the player reaches, strikes or uses them
+ * ('interact', 'objectHit', 'touch', 'exit').
  */
 
 /** Actions recorded in the input buffer. */
@@ -36,28 +46,51 @@ const BUFFERED = ['attack', 'roll'];
 
 export class Sandbox {
   /**
-   * Build the training grounds (or another level) and everything in it.
+   * Build an area and everything in it.
    * @param {object} [options]
-   * @param {import('three').Object3D} [options.levelRoot]  default: the training grounds
+   * @param {string | import('../world/buildArea.js').AreaDef} [options.area='training']
+   * @param {import('three').Object3D} [options.levelRoot]  an already built scene for the area (a preload, or a Blender export)
+   * @param {Record<string, any>} [options.models]  loaded glTFs (the scene's props; none in tests)
+   * @param {string} [options.spawn='start']  spawn_player_<name> to start at
    * @param {import('../feel/feelSettings.js').FeelValues} [options.feel]
    * @param {number | string} [options.seed='island']
-   * @param {boolean} [options.grunts=true]  false: only the dummy (some tests)
+   * @param {boolean} [options.grunts=true]  false: no enemies but dummies (some tests)
+   * @param {(spawn: { type: string, name: string }) => boolean} [options.spawnEnemy]  false skips an enemy (a beaten boss)
+   * @param {boolean} [options.respawnPlayer]  the sandbox revives the player itself (default: where enemies respawn too)
    */
-  static async create({ levelRoot, feel, seed = 'island', grunts = true } = {}) {
+  static async create({ area = 'training', levelRoot, models, spawn = 'start', feel, seed = 'island', grunts = true, spawnEnemy, respawnPlayer } = {}) {
     const physics = await createPhysics();
-    const root = levelRoot ?? buildTrainingGrounds();
-    const level = Level.fromScene(root, physics);
-    return new Sandbox(physics, level, { feel: feel ?? defaultFeel(), seed, grunts });
+    const def = typeof area === 'string' ? AREAS[/** @type {keyof typeof AREAS} */ (area)] : area;
+    if (!def) throw new Error(`No area "${area}"`);
+    const root = levelRoot ?? buildArea(def, models);
+    const level = Level.fromScene(root, physics, { defaultSurface: def.defaultSurface });
+    return new Sandbox(physics, level, {
+      feel: feel ?? defaultFeel(),
+      seed,
+      grunts,
+      area: def,
+      spawn,
+      spawnEnemy: spawnEnemy ?? (() => true),
+      respawnPlayer: respawnPlayer ?? Boolean(def.respawnEnemies),
+    });
   }
 
   /**
    * @param {import('../../engine/index.js').Physics} physics
    * @param {Level} level
-   * @param {{ feel: import('../feel/feelSettings.js').FeelValues, seed: number | string, grunts: boolean }} options
+   * @param {object} o
+   * @param {import('../feel/feelSettings.js').FeelValues} o.feel
+   * @param {number | string} o.seed
+   * @param {boolean} o.grunts
+   * @param {import('../world/buildArea.js').AreaDef} o.area
+   * @param {string} o.spawn
+   * @param {(s: { type: string, name: string }) => boolean} o.spawnEnemy
+   * @param {boolean} o.respawnPlayer
    */
-  constructor(physics, level, { feel, seed, grunts }) {
+  constructor(physics, level, { feel, seed, grunts, area, spawn, spawnEnemy, respawnPlayer }) {
     this.physics = physics;
     this.level = level;
+    this.area = area;
     this.events = new EventBus();
     this.rng = new Rng(seed);
     this.buffer = new InputBuffer(120);
@@ -67,32 +100,59 @@ export class Sandbox {
     /** @type {string | null} which grunt may attack right now */
     this.attackToken = null;
     this.feel = feel;
+    this.respawnPlayer = respawnPlayer;
+    this.disposed = false;
     this.camera = new FollowCamera({ probe: (o, d, max, r) => physics.sphereCast(o, d, max, r) });
 
-    for (const prop of PROPS) {
-      const size = prop.kind === 'barrel' ? [0.38, 0.5, 0.38] : prop.kind === 'crate' ? [0.42, 0.42, 0.42] : [0.6, 0.9, 0.2];
-      physics.addStaticBox({ x: size[0], y: size[1], z: size[2] }, { x: prop.position[0], y: prop.position[1] + size[1], z: prop.position[2] }, yawQuat(prop.yaw));
-    }
-
-    const start = level.spawns.player.start ?? { position: { x: 0, y: 0, z: 0 }, yaw: 0 };
+    const start = level.spawns.player[spawn] ?? level.spawns.player.start ?? { position: { x: 0, y: 0, z: 0 }, yaw: 0 };
     this.playerSpawn = start;
     const body = physics.createCharacter({ position: start.position, radius: PLAYER.radius, height: PLAYER.height });
     this.player = new Player(body, { yaw: start.yaw });
 
-    /** @type {Grunt[]} */
-    this.grunts = [];
+    /** Enemies that fight. @type {Grunt[]} */
+    this.foes = [];
     /** @type {Dummy[]} */
     this.dummies = [];
-    for (const spawn of level.spawns.enemies) {
-      if (spawn.type === 'dummy') {
-        this.dummies.push(new Dummy(`dummy_${spawn.name}`, spawn.position, spawn.yaw));
-        physics.addStaticBox({ x: 0.1, y: 0.6, z: 0.1 }, { x: spawn.position.x, y: spawn.position.y + 0.6, z: spawn.position.z });
-      } else if (spawn.type === 'grunt' && grunts) {
-        const def = ENEMIES.grunt;
-        const gbody = physics.createCharacter({ position: spawn.position, radius: def.radius, height: def.height });
-        this.grunts.push(new Grunt(`grunt_${spawn.name}`, gbody, spawn.position, spawn.yaw));
+    for (const s of level.spawns.enemies) {
+      if (!spawnEnemy(s)) continue;
+      if (s.type === 'dummy') {
+        this.dummies.push(new Dummy(`dummy_${s.name}`, s.position, s.yaw));
+        physics.addStaticBox({ x: 0.1, y: 0.6, z: 0.1 }, { x: s.position.x, y: s.position.y + 0.6, z: s.position.z });
+      } else if (grunts) {
+        this.spawnFoe(s.type, s.name, s.position, s.yaw);
       }
     }
+
+    /** People to talk to: where they stand and which way they face. @type {SimNpc[]} */
+    this.npcs = level.npcs
+      .filter((p) => Object.hasOwn(NPCS, p.id))
+      .map((p) => {
+        physics.addStaticBox({ x: 0.3, y: 0.85, z: 0.3 }, { x: p.position.x, y: p.position.y + 0.85, z: p.position.z });
+        return { id: p.id, kind: 'npc', position: { x: p.position.x, y: p.position.y, z: p.position.z }, facing: p.yaw, homeYaw: p.yaw, talking: false, hidden: false };
+      });
+
+    /**
+     * Interactive objects. The adventure layer sets `open`, `hidden` and
+     * `prompt` from the game's flags (setObject); the sandbox keeps their
+     * collision in step.
+     * @type {SimObject[]}
+     */
+    this.objects = level.objects
+      .filter((p) => Object.hasOwn(OBJECTS, p.id))
+      .map((p) => {
+        const def = OBJECTS[p.id];
+        let collider = null;
+        if (def.solid) {
+          const [w, h, d] = def.solid;
+          collider = physics.addStaticBox({ x: w / 2, y: h / 2, z: d / 2 }, { x: p.position.x, y: p.position.y + h / 2, z: p.position.z }, yawQuat(p.yaw));
+        }
+        return { id: p.id, kind: 'object', type: def.type, position: { x: p.position.x, y: p.position.y, z: p.position.z }, facing: p.yaw, open: false, hidden: false, prompt: def.prompt ?? null, collider, near: false };
+      });
+
+    /** What the player would use by pressing Interact now (an NPC or object), or null. @type {Focus | null} */
+    this.focus = null;
+    /** The exit the player stood in last update (exits fire on the way in). @type {string | null} */
+    this.inExit = level.exitAt(start.position) ? 'start' : null;
 
     /** @type {Grunt | Dummy | null} */
     this.lockTarget = null;
@@ -110,6 +170,35 @@ export class Sandbox {
     this.remember();
   }
 
+  /**
+   * Add an enemy (from a spawn point, or called in mid-fight).
+   * @param {string} type  a key of ENEMIES
+   * @param {string} name
+   * @param {{ x: number, y: number, z: number }} position
+   * @param {number} yaw
+   * @returns {Grunt | null}
+   */
+  spawnFoe(type, name, position, yaw) {
+    if (type !== 'grunt') return null;
+    const def = ENEMIES.grunt;
+    const body = this.physics.createCharacter({ position, radius: def.radius, height: def.height });
+    const foe = new Grunt(`${type}_${name}`, body, position, yaw);
+    this.foes.push(foe);
+    return foe;
+  }
+
+  /**
+   * Set an object's state (from the game's flags).
+   * @param {string} id
+   * @param {{ open?: boolean, hidden?: boolean, prompt?: string | null }} state
+   */
+  setObject(id, state) {
+    const o = this.objects.find((x) => x.id === id);
+    if (!o) return;
+    Object.assign(o, state);
+    if (o.collider) this.physics.setColliderEnabled(o.collider, !o.open && !o.hidden);
+  }
+
   /** @param {import('../feel/feelSettings.js').FeelValues} feel */
   setFeel(feel) {
     this.feel = feel;
@@ -121,14 +210,19 @@ export class Sandbox {
     };
   }
 
-  /** Every enemy (grunts and dummies). */
+  /** The sword-and-shield grunts among the foes. */
+  get grunts() {
+    return this.foes.filter((f) => f.kind === 'grunt');
+  }
+
+  /** Every enemy (foes and dummies). */
   get enemies() {
-    return [...this.grunts, ...this.dummies];
+    return [...this.foes, ...this.dummies];
   }
 
   /** @returns {(Player | Grunt | Dummy)[]} */
   get actors() {
-    return [this.player, ...this.grunts, ...this.dummies];
+    return [this.player, ...this.foes, ...this.dummies];
   }
 
   /**
@@ -163,14 +257,24 @@ export class Sandbox {
       emit,
     });
 
-    for (const grunt of this.grunts) this.updateGrunt(grunt);
+    for (const foe of this.foes) this.updateGrunt(foe);
     for (const dummy of this.dummies) dummy.update(TICK);
+    this.updateNpcs();
 
     this.physics.step();
     this.resolveCombat();
     this.updateCamera(frame);
     this.level.updateTriggers('player', this.player.position, (id) => this.emit('triggerEnter', { id }), (id) => this.emit('triggerExit', { id }));
+    this.updateWorld(frame);
     this.updateRespawns();
+  }
+
+  /**
+   * Step with no input: everyone else carries on (used while a menu or a
+   * conversation has the player's attention... and in tests).
+   */
+  idle() {
+    this.step({ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: {} });
   }
 
   /** @private */
@@ -287,6 +391,73 @@ export class Sandbox {
     }
   }
 
+  // ------------------------------------------------------------------ people, objects and exits
+
+  /** @private NPCs turn towards the player while talking, and back again after. */
+  updateNpcs() {
+    const p = this.player.position;
+    for (const npc of this.npcs) {
+      const want = npc.talking ? yawFromDirection(p.x - npc.position.x, p.z - npc.position.z) : npc.homeYaw;
+      npc.facing = approachAngle(npc.facing, want, 5 * TICK);
+    }
+  }
+
+  /**
+   * @private
+   * Exits, hearthstones, and what the player is facing that they could use.
+   * @param {import('../../engine/input/Input.js').InputFrame} frame
+   */
+  updateWorld(frame) {
+    const p = this.player.position;
+    const exit = this.player.alive ? this.level.exitAt(p) : null;
+    const key = exit ? `${exit.area}:${exit.spawn}` : null;
+    if (exit && this.inExit === null) this.emit('exit', { area: exit.area, spawn: exit.spawn });
+    this.inExit = key;
+
+    for (const o of this.objects) {
+      if (o.type !== 'hearthstone') continue;
+      const near = Math.hypot(o.position.x - p.x, o.position.z - p.z) <= HEARTHSTONE_RANGE;
+      if (near && !o.near) this.emit('touch', { id: o.id });
+      o.near = near;
+    }
+
+    this.focus = this.player.alive && this.player.canAct ? this.findFocus() : null;
+    if (this.focus && button(frame, 'interact').pressed) this.emit('interact', { ...this.focus });
+  }
+
+  /**
+   * The NPC or object the player would use: in range, roughly in front,
+   * nearest first.
+   * @returns {Focus | null}
+   */
+  findFocus() {
+    const p = this.player.position;
+    /** @type {Focus | null} */
+    let best = null;
+    let bestScore = Infinity;
+    /**
+     * @param {SimNpc | SimObject} thing
+     * @param {number} range
+     * @param {string} label
+     */
+    const consider = (thing, range, label) => {
+      const dx = thing.position.x - p.x;
+      const dz = thing.position.z - p.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > range) return;
+      const off = Math.abs(angleDelta(this.player.facing, yawFromDirection(dx, dz)));
+      if (off > 1.75 && dist > 1.2) return;
+      const score = dist + off * 0.8;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { kind: thing.kind, id: thing.id, label };
+      }
+    };
+    for (const npc of this.npcs) if (!npc.hidden) consider(npc, TALK_RANGE, 'Talk');
+    for (const o of this.objects) if (!o.hidden && o.prompt) consider(o, USE_RANGE, o.prompt);
+    return best;
+  }
+
   // ------------------------------------------------------------------ combat
 
   /** @private */
@@ -298,11 +469,28 @@ export class Sandbox {
         for (const r of resolveSwing(player, player.attack, frame, this.enemies, player.swingHits)) this.applyHit(player, player.attack, r);
       }
     }
-    for (const grunt of this.grunts) {
+    this.strikeObjects();
+    for (const grunt of this.foes) {
       if (!grunt.alive) continue;
       const frame = grunt.brain.frameNow;
       if (frame < 0) continue;
       for (const r of resolveSwing(grunt, grunt.attack, frame, [player], grunt.swingHits)) this.applyHit(grunt, grunt.attack, r);
+    }
+  }
+
+  /** @private The player's sword against switches. */
+  strikeObjects() {
+    const player = this.player;
+    if (!player.fsm.is('attack') || !player.attack || player.attackFrameNow < 0) return;
+    const spheres = hitSpheresAt(player.attack, player.attackFrameNow, player.position, player.facing);
+    for (const o of this.objects) {
+      if (o.type !== 'switch' || o.hidden || player.swingHits.has(o.id)) continue;
+      const c = { x: o.position.x, y: o.position.y + 1.1, z: o.position.z };
+      if (spheres.some((s) => Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z) <= s.r + 0.6)) {
+        player.swingHits.add(o.id);
+        this.hitstop = Math.max(this.hitstop, Math.round(4 * Number(this.feel.hitstopScale)));
+        this.emit('objectHit', { id: o.id, point: c, attack: player.attack });
+      }
     }
   }
 
@@ -362,20 +550,32 @@ export class Sandbox {
     this.recenter = null;
   }
 
+  /**
+   * Bring the player back at a spawn (default: where they arrived), at full health.
+   * @param {string} [spawn]
+   */
+  revivePlayer(spawn) {
+    const s = (spawn && this.level.spawns.player[spawn]) || this.playerSpawn;
+    this.player.respawn(s.position, s.yaw, (pos) => this.player.body.teleport?.(pos));
+    this.camera.reset(this.player.position, this.player.facing);
+    this.setLock(null);
+    this.inExit = this.level.exitAt(s.position) ? 'start' : null;
+    this.emit('respawn', { who: this.player });
+  }
+
   /** @private */
   updateRespawns() {
-    if (!this.player.alive) {
+    if (!this.player.alive && this.respawnPlayer) {
       this.respawnTimer += TICK;
       if (this.respawnTimer >= PLAYER.respawnSeconds) {
         this.respawnTimer = 0;
-        const s = this.playerSpawn;
-        this.player.respawn(s.position, s.yaw, (pos) => this.player.body.teleport?.(pos));
-        this.camera.reset(this.player.position, this.player.facing);
-        this.setLock(null);
-        this.emit('respawn', { who: this.player });
+        this.revivePlayer();
       }
     }
-    for (const grunt of this.grunts) {
+    // In the training grounds enemies come back; elsewhere they stay down
+    // until the area is entered again.
+    if (!this.area.respawnEnemies) return;
+    for (const grunt of this.foes) {
       if (grunt.alive) continue;
       grunt.respawnTimer -= TICK;
       if (grunt.respawnTimer <= 0) {
@@ -402,11 +602,41 @@ export class Sandbox {
     return actor.alive && actor.brain.frameNow >= 0 && attackPhase(actor.attack, actor.brain.frameNow) === 'active';
   }
 
+  /** Free the physics world (safe to call twice). */
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
     this.events.clear();
     this.physics.dispose();
   }
 }
+
+/**
+ * @typedef {object} SimNpc
+ * @property {string} id
+ * @property {'npc'} kind
+ * @property {{ x: number, y: number, z: number }} position
+ * @property {number} facing
+ * @property {number} homeYaw
+ * @property {boolean} talking
+ * @property {boolean} hidden
+ */
+
+/**
+ * @typedef {object} SimObject
+ * @property {string} id
+ * @property {'object'} kind
+ * @property {string} type
+ * @property {{ x: number, y: number, z: number }} position
+ * @property {number} facing
+ * @property {boolean} open
+ * @property {boolean} hidden
+ * @property {string | null} prompt  the verb to show, or null when it can't be used
+ * @property {any} collider
+ * @property {boolean} near
+ */
+
+/** @typedef {{ kind: 'npc' | 'object', id: string, label: string }} Focus */
 
 /** @param {number} yaw */
 function yawQuat(yaw) {
