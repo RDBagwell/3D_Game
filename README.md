@@ -170,7 +170,7 @@ triangles and CPU time are meaningful but frame rates are not):
 
 | | Measured |
 | --- | --- |
-| Download | 7.96 MB, 2.89 MB gzipped (everything, before the title screen) |
+| Download | 8.93 MB, 3.06 MB gzipped (everything, before the title screen) |
 | Busiest view | Village square on High: 149 draw calls, 104,491 triangles; a Hearth Halls fight: 140 draw calls, 128,523 triangles |
 | Simulation | 0.28 ms per step on average, 0.70 ms at the 95th percentile |
 

@@ -45,16 +45,22 @@ waits on the network).
 
 | File | Raw | Gzipped |
 | --- | --- | --- |
-| `assets/index-*.js` (game, Three.js, Rapier with its WebAssembly inlined) | 3.77 MB | 1.32 MB |
-| The knight and three skeletons (warrior, minion, mage), 0.61–0.68 MB each | 2.60 MB | 0.71 MB |
-| Four villagers, 0.21–0.22 MB each | 0.85 MB | 0.37 MB |
-| 46 small models (village and dungeon scenery, weapons, the dummy and props), CSS, HTML | 0.74 MB | 0.49 MB |
-| **Total** | **7.96 MB** | **2.89 MB** |
+| `assets/index-*.js` (game, Three.js, Rapier with its WebAssembly inlined) | 3.78 MB | 1.33 MB |
+| The knight and three skeletons (warrior, minion, mage), 0.78–0.85 MB each | 3.31 MB | 0.82 MB |
+| Four villagers, 0.28 MB each | 1.12 MB | 0.41 MB |
+| 46 small models (village and dungeon scenery, weapons, the dummy and props), CSS, HTML | 0.72 MB | 0.50 MB |
+| **Total** | **8.93 MB** | **3.06 MB** |
+
+The characters grew by 0.96 MB (0.17 MB gzipped) when the clips for the
+improvement plan were imported (directional dodges, walking, block
+reactions, landing, the skeletons' crumble and spawn; see
+`tools/asset-sources.mjs`). Measured the same way as before (gzip level 9 of
+each built file), not yet re-run through `tools/measure.mjs`.
 
 Within the 15 MB budget either way. Session 1 shipped 8.37 MB for one level
-and two characters; the whole adventure is now smaller, because the
-importer strips unused animation clips (the knight went from 2.02 MB to
-0.61 MB; docs/ASSETS-TODO.md).
+and two characters; the whole adventure is about the same size, because the
+importer strips unused animation clips (the knight is 0.83 MB with 28 of
+its 76 clips, against 3.5 MB with all of them; docs/ASSETS-TODO.md).
 
 Time to the title screen from the local preview server: 1.1 s (no network,
 so this says nothing about real loading times).

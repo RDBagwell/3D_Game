@@ -49,13 +49,25 @@ const KNIGHT_CLIPS = [
   'Idle', 'Running_A', 'Running_Strafe_Left', 'Running_Strafe_Right', 'Walking_Backwards',
   '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Chop',
   'Dodge_Forward', 'Blocking', 'Hit_A', 'Death_A', 'Death_B', 'Lie_StandUp', 'Use_Item', 'Interact', 'Cheer', 'PickUp',
+  // For the improvement plan (docs/ROADMAP.md): directional dodges, walking,
+  // block reactions and the shield bash, a falling pose and landing, a
+  // second hit reaction and a stab.
+  'Dodge_Left', 'Dodge_Right', 'Dodge_Backward', 'Walking_A', 'Block_Hit', 'Block_Attack',
+  'Jump_Idle', 'Jump_Land', 'Hit_B', '1H_Melee_Attack_Stab',
 ];
 const SKELETON_CLIPS = [
   'Idle', 'Idle_Combat', 'Running_A', 'Running_B', 'Running_Strafe_Left', 'Running_Strafe_Right', 'Walking_Backwards',
   '1H_Melee_Attack_Chop', '2H_Melee_Attack_Chop', '2H_Melee_Attack_Spin', 'Blocking', 'Hit_A', 'Hit_B', 'Death_A',
   'Spellcast_Shoot', 'Spellcast_Raise', 'Spellcast_Summon', 'Unarmed_Melee_Attack_Punch_A', 'Jump_Full_Short', 'Taunt',
+  // For the improvement plan (docs/ROADMAP.md): walking home, crumbling to
+  // bones on death, climbing out of the ground.
+  'Walking_A', 'Death_C_Skeletons', 'Spawn_Ground_Skeletons',
 ];
-const VILLAGER_CLIPS = ['Idle', 'Interact', 'Cheer', 'Use_Item'];
+/** Each skeleton's own extra moves (the plan's second attacks and reactions). */
+const WARRIOR_CLIPS = [...SKELETON_CLIPS, '1H_Melee_Attack_Slice_Diagonal', 'Block_Attack', 'Block_Hit'];
+const MINION_CLIPS = [...SKELETON_CLIPS, '1H_Melee_Attack_Jump_Chop'];
+const MAGE_CLIPS = [...SKELETON_CLIPS, 'Dodge_Left', 'Dodge_Right'];
+const VILLAGER_CLIPS = ['Idle', 'Interact', 'Cheer', 'Use_Item', 'Sit_Floor_Idle', 'Sit_Chair_Idle', 'PickUp'];
 
 /** Scenery: a model per entry, all small (one shared colour atlas per pack). */
 const hex = (/** @type {string} */ file, /** @type {string} */ to) => ({ file, pack: 'hexagon', to: `models/village/${to}.glb`, textureSize: 256 });
@@ -64,9 +76,9 @@ const dun = (/** @type {string} */ file, /** @type {string} */ to) => ({ file, p
 /** @type {AssetSource[]} */
 export const SOURCES = [
   { file: 'Knight.glb', pack: 'adventurers', to: 'models/knight.glb', textureSize: 256, keep: KNIGHT_CLIPS },
-  { file: 'Skeleton_Warrior.glb', pack: 'skeletons', to: 'models/skeleton_warrior.glb', textureSize: 256, keep: SKELETON_CLIPS },
-  { file: 'Skeleton_Mage.glb', pack: 'skeletons', to: 'models/skeleton_mage.glb', textureSize: 256, keep: SKELETON_CLIPS },
-  { file: 'Skeleton_Minion.glb', pack: 'skeletons', to: 'models/skeleton_minion.glb', textureSize: 256, keep: SKELETON_CLIPS },
+  { file: 'Skeleton_Warrior.glb', pack: 'skeletons', to: 'models/skeleton_warrior.glb', textureSize: 256, keep: WARRIOR_CLIPS },
+  { file: 'Skeleton_Mage.glb', pack: 'skeletons', to: 'models/skeleton_mage.glb', textureSize: 256, keep: MAGE_CLIPS },
+  { file: 'Skeleton_Minion.glb', pack: 'skeletons', to: 'models/skeleton_minion.glb', textureSize: 256, keep: MINION_CLIPS },
   { file: 'Skeleton_Axe.gltf', pack: 'skeletons', to: 'models/skeleton_axe.glb', textureSize: 256 },
   { file: 'Skeleton_Staff.gltf', pack: 'skeletons', to: 'models/skeleton_staff.glb', textureSize: 256 },
   { file: 'Mage.glb', pack: 'adventurers', to: 'models/npc_mage.glb', textureSize: 256, keep: VILLAGER_CLIPS },
