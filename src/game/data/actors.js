@@ -178,6 +178,8 @@ export const ENEMIES = {
     armour: 0.6,
     /** Frames between attacks (phase one, two). */
     rest: [50, 30],
+    /** Phase two recovers this many frames sooner from each attack. */
+    quickerRecovery: { wardenSweep: 8 },
     /** The roar into phase two: invulnerable, calls cindermites to these markers. */
     roarFrames: 96,
     summon: { type: 'mite', at: ['summon_a', 'summon_b', 'summon_c'] },
@@ -186,7 +188,8 @@ export const ENEMIES = {
     hitstunFrames: 0,
     staggerFrames: 0,
     respawnSeconds: 0,
-    shells: 40,
+    // Its reward is in the Hearth Halls' data (the `defeat` effects), not paid per kill.
+    shells: 0,
     token: { group: 'warden', max: 1 },
   },
   dummy: {

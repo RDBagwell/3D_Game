@@ -1,5 +1,5 @@
 import {
-  Group, Mesh, RingGeometry, MeshBasicMaterial, Sprite, SpriteMaterial, CanvasTexture, DoubleSide, Color,
+  Group, Mesh, RingGeometry, PlaneGeometry, MeshBasicMaterial, Sprite, SpriteMaterial, CanvasTexture, DoubleSide, Color,
 } from 'three';
 import { Animator, lerp, lerpAngle } from '../../engine/index.js';
 import { ANIMATIONS } from '../player/Player.js';
@@ -55,6 +55,20 @@ export class CharacterView {
       this.ring.position.y = 0.03;
       this.ring.visible = false;
       this.root.add(this.ring);
+      // Narrow attacks (the Warden's slam) show their real shape instead: a
+      // lane along the ground ahead, its outline faint and a fill that runs
+      // out to the tip as the wind-up ends.
+      const lane = new PlaneGeometry(1, 1);
+      lane.rotateX(-Math.PI / 2);
+      lane.translate(0, 0, 0.5); // from the feet forward (+z is where it faces)
+      const laneMaterial = (/** @type {number} */ opacity) => new MeshBasicMaterial({ color: 0xff5a1f, transparent: true, opacity, side: DoubleSide, depthWrite: false });
+      this.lane = new Mesh(lane, laneMaterial(0.25));
+      this.laneFill = new Mesh(lane, laneMaterial(0.6));
+      for (const m of [this.lane, this.laneFill]) {
+        m.position.y = 0.035;
+        m.visible = false;
+        this.root.add(m);
+      }
       this.warning = new Sprite(new SpriteMaterial({ map: warningTexture(), depthTest: false, transparent: true }));
       this.warning.position.y = actor.height + 0.6;
       if (actor.def?.brain === 'warden') this.warning.scale.setScalar(1.6);
@@ -200,12 +214,20 @@ export class CharacterView {
     // Telegraph: a ring that closes on the enemy as the wind-up runs out, a
     // warning sign, a glowing weapon. The ring shows the attack's reach.
     const winding = brain.telegraph && this.telegraphOn && g.alive;
-    if (this.ring && this.warning) {
-      this.ring.visible = winding;
+    if (this.ring && this.warning && this.lane && this.laneFill) {
+      const narrow = Boolean(atk && state === 'windup' && atk.hitbox.arcTo - atk.hitbox.arcFrom < 40);
+      this.ring.visible = winding && !narrow;
+      this.lane.visible = this.laneFill.visible = winding && narrow;
       this.warning.visible = winding;
       if (winding) {
         const t = brain.windupProgress ?? 0;
         const reach = atk && state === 'windup' ? atk.hitbox.reach + atk.hitbox.radius : g.radius + 0.6;
+        if (narrow && atk) {
+          const length = reach; // to the far edge of the blow
+          const width = atk.hitbox.radius * 2;
+          this.lane.scale.set(width, 1, length);
+          this.laneFill.scale.set(width, 1, Math.max(0.01, length * t));
+        }
         const s = reach * (1.6 - 0.9 * t);
         this.ring.scale.set(s, s, s);
         /** @type {MeshBasicMaterial} */ (this.ring.material).opacity = 0.5 + 0.45 * t;

@@ -274,11 +274,21 @@ export const SOUNDS = {
     },
   },
   boss_windup: {
-    caption: '[The Warden raises its axe]',
+    caption: '[The Warden draws its axe back]',
     volume: 0.85,
     recipe: (ctx, out, t) => {
       tone(ctx, out, t, { type: 'sawtooth', from: 60, to: 140, duration: 0.6, volume: 0.22, attack: 0.3 });
       noise(ctx, out, t, { duration: 0.6, filter: 'bandpass', from: 200, to: 900, q: 2, volume: 0.5, attack: 0.3 });
+    },
+  },
+  boss_slam_windup: {
+    caption: '[The Warden lifts its axe high]',
+    volume: 0.9,
+    recipe: (ctx, out, t) => {
+      // Lower and longer than the sweep, rising to a held note: the axe goes up, and up.
+      tone(ctx, out, t, { type: 'sawtooth', from: 45, to: 180, duration: 0.8, volume: 0.24, attack: 0.5 });
+      tone(ctx, out, t, { type: 'square', from: 30, to: 60, duration: 0.8, volume: 0.1, attack: 0.4 });
+      noise(ctx, out, t, { duration: 0.8, filter: 'bandpass', from: 120, to: 1400, q: 3, volume: 0.45, attack: 0.5 });
     },
   },
   roar: {

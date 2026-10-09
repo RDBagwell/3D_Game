@@ -23,6 +23,8 @@ test.describe('smoke', () => {
     await page.keyboard.down('KeyW');
     await page.waitForFunction((z) => /** @type {Game} */ (window).game.sandbox.player.position.z < z - 3, start.z, { timeout: 60_000 });
     await page.keyboard.up('KeyW');
+    // Once the greeting has gone, the first quest is announced.
+    await expect(page.locator('.toast', { hasText: 'New quest: The Cold Hearth' })).toBeVisible({ timeout: 60_000 });
     expect(errors).toEqual([]);
   });
 

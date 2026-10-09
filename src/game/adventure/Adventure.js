@@ -187,6 +187,14 @@ export class Adventure {
     this.events.emit('refresh', {});
   }
 
+  /** Announce every quest under way as new (the start of a new game). */
+  announceQuests() {
+    for (const [id, quest] of Object.entries(QUESTS)) {
+      const stage = this.state.questStages[id] ?? -1;
+      if (stage >= 0 && stage < quest.stages.length) this.events.emit('quest', { id, name: quest.name, text: quest.stages[stage].text, status: 'new' });
+    }
+  }
+
   /**
    * Announce quests that moved on since last time ('quest' events).
    * @param {boolean} [silent]  just remember where they are (loading a save)

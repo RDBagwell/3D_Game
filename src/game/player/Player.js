@@ -1,5 +1,5 @@
 import { StateMachine, approach, approachAngle, yawFromDirection, DEG, button } from '../../engine/index.js';
-import { ATTACKS, totalFrames } from '../data/attacks.js';
+import { ATTACKS, totalFrames, PLAYER_COMBO } from '../data/attacks.js';
 import { PLAYER } from '../data/actors.js';
 import { attackPhase, isInFront } from '../combat/hitboxes.js';
 
@@ -260,7 +260,7 @@ export class Player {
     const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
     if (this.tryRoll()) return;
     if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
-      this.attackKey = 'slash1';
+      this.attackKey = PLAYER_COMBO[0];
       this.fsm.go('attack');
       return;
     }
@@ -292,7 +292,7 @@ export class Player {
   swingAt(point) {
     if (!this.canAct) return;
     this.facing = yawFromDirection(point.x - this.position.x, point.z - this.position.z);
-    this.attackKey = 'slash1';
+    this.attackKey = PLAYER_COMBO[0];
     this.fsm.go('attack');
   }
 
@@ -408,7 +408,7 @@ export class Player {
       const ctx = /** @type {PlayerContext} */ (this.ctx);
       if (this.tryRoll()) return;
       if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
-        this.attackKey = 'slash1';
+        this.attackKey = PLAYER_COMBO[0];
         this.fsm.go('attack');
         return;
       }
@@ -453,7 +453,7 @@ export class Player {
     if (this.tryRoll()) return;
     if (this.tryDrink()) return;
     if (ctx.buffer.consume('attack', Number(ctx.feel.comboBuffer))) {
-      this.attackKey = 'slash1';
+      this.attackKey = PLAYER_COMBO[0];
       this.fsm.go('attack');
       return;
     }

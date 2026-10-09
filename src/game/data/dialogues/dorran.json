@@ -6,6 +6,7 @@
     "check": {
       "branch": [
         { "if": { "all": [{ "flag": "trial_won" }, { "notFlag": "blade_given" }] }, "next": "reward" },
+        { "if": { "flag": "hearth_lit" }, "next": "lit" },
         { "if": { "flag": "blade_given" }, "next": "done" },
         { "if": { "flag": "dorran_met" }, "next": "again" },
         { "next": "hello" }
@@ -38,6 +39,17 @@
       "effects": [{ "giveItem": "tempered_blade" }, { "setFlag": "blade_given" }],
       "end": true
     },
-    "done": { "text": "The pens are empty and my sword's on your back. Go and do something useful with it.", "end": true }
+    "done": { "text": "The pens are empty and my sword's on your back. Go and do something useful with it.", "end": true },
+    "lit": {
+      "text": "Don't look at me like that. It's the smoke from the forge. ...Fine. Forty years I guarded that gate, and I never once saw the Hearth burn like that. Thank you, courier.",
+      "next": "lit_next"
+    },
+    "lit_next": {
+      "branch": [
+        { "if": { "notFlag": "trial_won" }, "next": "offer" },
+        { "next": "lit_end" }
+      ]
+    },
+    "lit_end": { "text": "Now go and sit by that fire. You've earned it.", "end": true }
   }
 }

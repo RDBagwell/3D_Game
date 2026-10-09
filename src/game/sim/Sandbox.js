@@ -559,7 +559,7 @@ export class Sandbox {
           this.endProjectile(p, 'blocked');
           continue;
         } else {
-          const counter = player.fsm.is('attack');
+          const counter = false; // bolts and embers are never counter hits
           const damage = Math.max(1, Math.round(def.damage * this.damageTaken));
           player.takeHit({ damage, knockback, hitstun: def.hitstun, knockdown: counter });
           this.hitstop = Math.max(this.hitstop, Math.round(def.hitstop * Number(this.feel.hitstopScale)));
@@ -709,8 +709,8 @@ export class Sandbox {
 
     if (result.result === 'hit') {
       const wasAlive = target.alive;
-      // A counter hit: caught in the middle of your own swing, you're knocked down.
-      const counter = target instanceof Player && target.fsm.is('attack');
+      // A counter hit: a heavy blow caught you winding up a swing, so you're knocked down.
+      const counter = target instanceof Player && Boolean(attack.counterHit) && target.fsm.is('attack') && Boolean(target.attack) && attackPhase(/** @type {any} */ (target.attack), target.attackFrameNow) === 'startup';
       let damage = attack.damage;
       if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
       if (target instanceof Enemy) damage = Math.max(1, Math.round(damage * target.brain.damageTaken));

@@ -53,6 +53,8 @@ export class WardenBrain {
     this.def = def;
     /** @type {import('../data/attacks.js').Attack} */
     this.attack = ATTACKS.wardenSweep;
+    /** Which attack `attack` is (ENEMIES.warden.quickerRecovery is keyed by it). */
+    this.attackKey = 'wardenSweep';
     this.frameNow = -1;
     this.aware = false;
     this.phase = 1;
@@ -174,7 +176,7 @@ export class WardenBrain {
       recover: {
         update: () => {
           still();
-          const frames = this.attack === ATTACKS.wardenSlam ? 22 : this.attack.recovery - (this.phase === 2 ? 8 : 0);
+          const frames = this.attack.recovery - (this.phase === 2 ? (this.def.quickerRecovery?.[this.attackKey] ?? 0) : 0);
           if (this.fsm.frames >= frames) {
             this.rest = this.def.rest[p()];
             this.fsm.go(this.phaseTwoPending ? 'roar' : 'approach');
@@ -195,6 +197,7 @@ export class WardenBrain {
             ctx().shoot?.('ember', ctx().facing, [-0.34, 0, 0.34]);
             this.volleyCooldown = 300;
             this.attack = ATTACKS.wardenSweep; // recover like after a sweep
+            this.attackKey = 'wardenSweep';
             this.fsm.go('recover');
           }
         },
@@ -231,6 +234,7 @@ export class WardenBrain {
     if (this.lastAttacks.length >= 2 && this.lastAttacks.every((k) => k === key)) key = key === 'wardenSweep' ? 'wardenSlam' : 'wardenSweep';
     this.lastAttacks = [...this.lastAttacks.slice(-1), key];
     this.attack = ATTACKS[key];
+    this.attackKey = key;
     this.fsm.go('windup');
   }
 

@@ -98,6 +98,8 @@ export class Game {
     this.endingTime = 0;
     /** The first-play hint has been shown. */
     this.greeted = false;
+    /** A new game's first quest is still to be announced. */
+    this.announcePending = false;
     /** Set when the game itself releases the mouse (opening the lab), so it doesn't pause. */
     this.releasingPointer = false;
   }
@@ -220,6 +222,7 @@ export class Game {
     if (this.sandbox && this.sandbox !== sandbox && this.sandbox !== this.adventure?.sandbox) this.sandbox.dispose();
     this.sandbox = sandbox;
     sandbox.setFeel(this.feel);
+    this.updateFeelBadge();
     this.applyAssists();
     this.assists.reset();
     this.view.setSandbox(sandbox);
@@ -256,6 +259,10 @@ export class Game {
     const state = GameState.newGame();
     await this.startAdventure(state, START.area, START.spawn);
     this.hud.showBanner(AREAS[/** @type {keyof typeof AREAS} */ (START.area)].name, 2.5);
+    // A new game announces the quest you start with (a loaded one doesn't
+    // again), once the greeting banner has gone so the two don't overlap
+    // (render() checks).
+    this.announcePending = true;
     this.save();
   }
 
@@ -553,6 +560,7 @@ export class Game {
   // ------------------------------------------------------------------ modes
 
   toTitle() {
+    this.announcePending = false;
     if (this.mode === 'play' || this.mode === 'paused') {
       this.adventure?.dispose();
       this.adventure = null;
@@ -580,7 +588,8 @@ export class Game {
       const touch = this.touch.visible;
       const lab = !this.adventure;
       if (touch) this.hud.showBanner(lab ? 'Hit the training dummy. Lab: the Lab button.' : 'Left thumb moves, drag on the right to look.', 4);
-      else this.hud.showBanner('Click the game to steer the camera with the mouse. Tab opens the game-feel lab.', 4);
+      else if (lab) this.hud.showBanner('Click the game to steer the camera with the mouse. Tab opens the game-feel lab.', 4);
+      else this.hud.showBanner('Click the game to steer the camera with the mouse. Esc pauses: your quests are there.', 4);
     }
   }
 
@@ -605,8 +614,18 @@ export class Game {
     this.feel = v;
     this.sandbox?.setFeel(v);
     writeJson(this.storage, STORAGE.feel, v);
-    const preset = matchingPreset(v);
-    this.hud?.setPreset(preset ? FEEL_PRESETS[/** @type {keyof typeof FEEL_PRESETS} */ (preset)].label : 'Custom');
+    this.updateFeelBadge();
+  }
+
+  /**
+   * The "Feel: …" badge: always in the lab's training grounds; in the
+   * adventure only when the feel isn't the default (Polished), so a player
+   * who changed it knows, and nobody else sees a developer label.
+   */
+  updateFeelBadge() {
+    const preset = matchingPreset(this.feel);
+    const label = preset ? FEEL_PRESETS[/** @type {keyof typeof FEEL_PRESETS} */ (preset)].label : 'Custom';
+    this.hud?.setPreset(this.adventure && preset === 'polished' ? null : label);
   }
 
   /** @param {import('./feel/feelSettings.js').ShowValues} v */
@@ -760,6 +779,10 @@ export class Game {
     this.view.render(alpha, dt * (this.show.speed ?? 1));
     const sb = this.sandbox;
     this.hud.tick(dt);
+    if (this.announcePending && this.mode === 'play' && this.hud.banner.hidden) {
+      this.announcePending = false;
+      this.adventure?.announceQuests();
+    }
     this.hud.updateHealth(dt, sb.player);
     const t = sb.lockTarget;
     this.hud.updateReticle(t ? this.view.project({ x: t.position.x, y: t.position.y + t.height * 0.6, z: t.position.z }) : null, t);

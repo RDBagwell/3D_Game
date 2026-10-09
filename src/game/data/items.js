@@ -47,6 +47,12 @@ export const ITEMS = {
     type: 'key',
     stack: 1,
   },
+  lamp_crate_lit: {
+    name: 'Crate of Lamp-stones',
+    description: 'The delivery you rowed over. Since the Hearth woke, every stone in it glows warm.',
+    type: 'key',
+    stack: 1,
+  },
   satchel: {
     name: 'Wren\'s Satchel',
     description: 'Battered leather, full of notes about wisps. Wren will want it back.',

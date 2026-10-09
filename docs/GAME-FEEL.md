@@ -272,8 +272,11 @@ and players who can't hear. The grunt keeps turning towards you during the
 wind-up, slowly, and stops 9 frames before the hit, so a late roll or a step
 to the side works. Only one grunt attacks at a time (the attack token), and
 after attacking it recovers for 32 frames: your opening. The flip side: a
-blow that lands while you're mid-swing is a **counter hit** and knocks you
-down, so attacking into a wind-up you've seen is a choice with a cost.
+heavy blow (the grunt's chop, the Warden's sweep: `counterHit` in
+`attacks.js`) that lands while you're still winding up your own swing is a
+**counter hit** and knocks you down, so attacking into a wind-up you've seen
+is a choice with a cost. A light bite, a bolt, or a blow that arrives once
+your blade is already moving only makes you flinch.
 
 Switch telegraphs off and the wind-up is still there, but only in the
 animation: the same fight suddenly feels unfair.
@@ -283,8 +286,9 @@ frames (short, but there's a ring, a hiss and a caption), and two may attack
 at once. Ash adepts wind up 44 frames before each bolt, stop aiming 10
 frames before they let go, and the bolt flies at 8.5 m/s: roll through it,
 block it, or cut it out of the air. The Cinder Warden's sweep winds up for
-34 frames and its slam for 48; the ring shows each attack's real reach, and
-the slam leaves an opening of about two seconds (its axe stuck, its core
+34 frames and its slam for 48. The sweep's ring shows its reach; the slam,
+which only hits a narrow strip ahead, shows that strip as a lane on the floor
+that fills as the axe rises, and each has its own wind-up sound. The slam leaves an opening of about two seconds (its axe stuck, its core
 glowing, double damage).
 
 **Testing fairness.** `tests/helpers/bossBot.js` is a scripted player that

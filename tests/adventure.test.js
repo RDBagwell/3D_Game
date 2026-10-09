@@ -102,8 +102,10 @@ describe('the adventure', () => {
 
     // The Warden falls and leaves the Hearth Ember.
     const warden = adv.sandbox.foes.find((f) => f.spawnName === 'warden');
+    const shellsBefore = adv.state.shells;
     kill(adv, warden);
     expect(adv.state.flags.has('warden_defeated')).toBe(true);
+    expect(adv.state.shells - shellsBefore).toBe(40); // paid once (it used to be twice)
     expect(adv.state.itemCount('hearth_ember')).toBe(1);
 
     // Light the Hearth: the ending.
@@ -112,6 +114,9 @@ describe('the adventure', () => {
     expect(end.ending).toBe(true);
     expect(adv.state.flags.has('hearth_lit')).toBe(true);
     expect(quests).toContain('done:hearth');
+    // The lamp-stones you delivered are warm now.
+    expect(adv.state.itemCount('lamp_crate')).toBe(0);
+    expect(adv.state.itemCount('lamp_crate_lit')).toBe(1);
 
     // A beaten Warden doesn't come back.
     await adv.enter('halls', 'ante');
@@ -149,6 +154,15 @@ describe('the adventure', () => {
     converse(adv, await use(adv, find(adv.sandbox.npcs, 'dorran')));
     expect(adv.state.itemCount('tempered_blade')).toBe(1);
     expect(adv.sandbox.player.damageScale).toBeCloseTo(1.4);
+    adv.dispose();
+  });
+
+  it('a new game announces the quest you start with', () => {
+    const adv = new Adventure(GameState.newGame());
+    const quests = [];
+    adv.events.on('quest', (q) => quests.push(`${q.status}:${q.id}`));
+    adv.announceQuests();
+    expect(quests).toEqual(['new:hearth']);
     adv.dispose();
   });
 
