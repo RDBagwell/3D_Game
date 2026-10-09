@@ -444,6 +444,8 @@ export class WorldView {
     this.shake.scale = Number(feel.shake);
     this.shake.reducedMotion = prefs.reducedMotion;
     sb.camera.interpolate(alpha, this.camera.position, this.lookAt);
+    // Squeezed up against the hero (a wall behind): fade them, so they don't fill the screen.
+    this.views.get('player')?.setOpacity(Math.min(1, Math.max(0.2, (sb.camera.clearance - 0.45) / 0.9)));
     const { offset, roll } = this.shake.sample(dt);
     this.camera.position.add(offset);
     this.camera.lookAt(this.lookAt.x + offset.x * 0.5, this.lookAt.y + offset.y * 0.5, this.lookAt.z + offset.z * 0.5);

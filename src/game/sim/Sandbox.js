@@ -44,7 +44,7 @@ import { OBJECTS, USE_RANGE, HEARTHSTONE_RANGE } from '../data/objects.js';
  */
 
 /** Actions recorded in the input buffer. */
-const BUFFERED = ['attack', 'roll'];
+const BUFFERED = ['attack', 'roll', 'useItem'];
 
 export class Sandbox {
   /**
@@ -614,7 +614,12 @@ export class Sandbox {
     }
 
     this.focus = this.player.alive && this.player.canAct ? this.findFocus() : null;
-    if (this.focus && button(frame, 'interact').pressed) this.emit('interact', { ...this.focus });
+    if (this.focus && button(frame, 'interact').pressed) {
+      const o = this.focus.kind === 'object' ? this.objects.find((x) => x.id === this.focus?.id) : null;
+      // A switch is struck, not used: Interact turns to it and swings.
+      if (o?.type === 'switch') this.player.swingAt(o.position);
+      else this.emit('interact', { ...this.focus });
+    }
   }
 
   /**

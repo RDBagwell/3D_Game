@@ -4,7 +4,7 @@
   "start": "look",
   "nodes": {
     "look": {
-      "text": "The portcullis won't budge. There's no lever on this side, but a blue crystal hums on the dais across the hall.",
+      "text": "The portcullis won't budge. There's no lever on this side, but a blue crystal hums on the dais across the hall. Strike it with your sword and it might ring the gate open.",
       "end": true
     }
   }

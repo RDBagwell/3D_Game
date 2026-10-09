@@ -48,6 +48,8 @@ export const OBJECTS = {
   hall_switch: {
     type: 'switch',
     name: 'the crystal',
+    // Struck with the sword (Interact swings at it too).
+    prompt: 'Strike',
     openIf: { flag: 'hall_gate_open' },
     hitEffects: [{ setFlag: 'hall_gate_open' }],
   },

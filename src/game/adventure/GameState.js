@@ -26,6 +26,8 @@ export class GameState {
     this.playTime = 0;
     /** Where you stood when you chose Save and quit (else you resume at `spawn`). @type {{ x: number, y: number, z: number, yaw: number } | null} */
     this.position = null;
+    /** Enemies beaten for good, as "area:name" (an area's `enemies` entry). @type {Set<string>} */
+    this.defeated = new Set();
   }
 
   /** A fresh playthrough: the crate you're delivering, a tonic and a few shells. */
@@ -43,6 +45,7 @@ export class GameState {
       spawn: this.spawn,
       checkpoint: { ...this.checkpoint },
       flags: [...this.flags].sort(),
+      defeated: [...this.defeated].sort(),
       items: Object.fromEntries([...this.items].filter(([, n]) => n > 0)),
       shells: this.shells,
       questStages: { ...this.questStages },
@@ -60,12 +63,21 @@ export class GameState {
     state.spawn = data.spawn;
     state.checkpoint = { ...data.checkpoint };
     state.flags = new Set(data.flags);
+    state.defeated = new Set(data.defeated);
     state.items = new Map(Object.entries(data.items));
     state.shells = data.shells;
     state.questStages = { ...data.questStages };
     state.playTime = data.playTime;
     state.position = /** @type {any} */ (data).position ?? null;
     return state;
+  }
+
+  /**
+   * @param {string} area
+   * @param {string} name  the enemy's name in the area's `enemies`
+   */
+  isDefeated(area, name) {
+    return this.defeated.has(`${area}:${name}`);
   }
 
   /** @param {string} id */

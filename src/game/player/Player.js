@@ -39,6 +39,12 @@ export const TRANSITIONS = {
   dead: [],
 };
 
+/**
+ * How long a Use item press waits, in updates, for the hero to be free to
+ * drink (two thirds of a second: long enough to outlast a whole swing or roll).
+ */
+const USE_ITEM_BUFFER = 40;
+
 /** Which clip each state plays (attacks use their own `anim`). */
 export const ANIMATIONS = {
   idle: 'Idle',
@@ -109,6 +115,8 @@ export class Player {
     this.swingHits = new Set();
     /** Increases each swing, so enemies can react once per attack. */
     this.swingId = 0;
+    /** The tonic being drunk has taken effect. */
+    this.drank = false;
     this.rollDir = { x: 0, z: 1 };
     this.hitstunFrames = 0;
     this.invulnerableFrames = 0;
@@ -207,8 +215,15 @@ export class Player {
         update: () => this.updateShield(),
       },
       drink: {
-        enter: () => this.ctx?.emit('drinkStart', { position: this.position }),
+        enter: () => {
+          this.drank = false;
+          this.ctx?.emit('drinkStart', { position: this.position });
+        },
         update: () => this.updateDrink(),
+        // Knocked out of it before the tonic took effect: spilled, not used.
+        exit: () => {
+          if (!this.drank) this.ctx?.emit('drinkSpilled', { position: this.position });
+        },
       },
       hitstun: {
         update: () => {
@@ -268,6 +283,17 @@ export class Player {
     /** @type {PlayerState} */
     const want = ctx.lockTarget ? 'strafe' : dir.amount > 0.05 || Math.hypot(this.velocity.x, this.velocity.z) > 0.6 ? 'run' : 'idle';
     if (want !== this.fsm.current) this.fsm.go(want);
+  }
+
+  /**
+   * Turn to a point and swing (Interact on a crystal switch).
+   * @param {{ x: number, z: number }} point
+   */
+  swingAt(point) {
+    if (!this.canAct) return;
+    this.facing = yawFromDirection(point.x - this.position.x, point.z - this.position.z);
+    this.attackKey = 'slash1';
+    this.fsm.go('attack');
   }
 
   /** Back to idle, run or strafe after an action. */
@@ -390,11 +416,18 @@ export class Player {
     if (f >= PLAYER.roll.frames - 1) this.toLocomotion();
   }
 
-  /** Use the quick slot (a tonic) if Use item was pressed and there's one to use. */
+  /**
+   * Use the quick slot (a tonic) if Use item was pressed recently: a press
+   * mid-swing or mid-roll waits in the buffer for the hero to be free. A
+   * press that can't be used (none left, full health) says why.
+   */
   tryDrink() {
     const ctx = /** @type {PlayerContext} */ (this.ctx);
-    const frame = /** @type {import('../../engine/input/Input.js').InputFrame} */ (this.frame);
-    if (!button(frame, 'useItem').pressed || !ctx.canUseItem?.()) return false;
+    if (!ctx.buffer.consume('useItem', USE_ITEM_BUFFER)) return false;
+    if (!ctx.canUseItem?.()) {
+      ctx.emit('useItemRefused', {});
+      return false;
+    }
     return this.fsm.go('drink');
   }
 
@@ -407,7 +440,10 @@ export class Player {
     const f = this.fsm.frames;
     const dir = this.moveDirection();
     this.accelerate(dir.x * PLAYER.drink.speed, dir.z * PLAYER.drink.speed, PLAYER.runSpeed);
-    if (f === PLAYER.drink.effectFrame) ctx.emit('useItem', { position: this.position });
+    if (f === PLAYER.drink.effectFrame) {
+      this.drank = true;
+      ctx.emit('useItem', { position: this.position });
+    }
     if (f >= PLAYER.drink.frames - 1) this.toLocomotion();
   }
 

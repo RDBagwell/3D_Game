@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { USE_RANGE } from '../src/game/data/objects.js';
+import { yawFromDirection } from '../src/engine/index.js';
 import { Adventure } from '../src/game/adventure/Adventure.js';
 import { GameState } from '../src/game/adventure/GameState.js';
 import { ATTACKS } from '../src/game/data/attacks.js';
@@ -164,6 +166,82 @@ describe('the adventure', () => {
     adv.step(use, 1 / 60);
     expect(player.state).not.toBe('drink'); // none left
     adv.dispose();
+  });
+
+  it('a tonic pressed mid-swing is drunk once the swing ends; one refused or spilled says why', async () => {
+    const adv = new Adventure(GameState.newGame());
+    await adv.enter('village', 'start');
+    const player = adv.sandbox.player;
+    const notices = [];
+    adv.events.on('notice', (n) => notices.push(n.text));
+    const press = (/** @type {string} */ action) => ({ ...idle, buttons: { [action]: { down: true, pressed: true, released: false } } });
+
+    // Full health: nothing drunk, and a message.
+    adv.step(press('useItem'), 1 / 60);
+    expect(player.state).not.toBe('drink');
+    expect(notices.at(-1)).toMatch(/full vigor/);
+
+    // Pressed during a swing: buffered, drunk when the swing ends.
+    player.hp = 30;
+    adv.step(press('attack'), 1 / 60);
+    expect(player.state).toBe('attack');
+    adv.step(press('useItem'), 1 / 60);
+    let drank = false;
+    for (let i = 0; i < 60 && !drank; i++) {
+      adv.step(idle, 1 / 60);
+      drank = player.state === 'drink';
+    }
+    expect(drank).toBe(true);
+
+    // Hit before it takes effect: spilled, still in the bag.
+    player.takeHit({ damage: 1, knockback: { x: 0, z: 0 }, hitstun: 10 });
+    adv.step(idle, 1 / 60);
+    expect(notices.at(-1)).toMatch(/Spilled/);
+    expect(adv.state.itemCount('tonic')).toBe(1);
+    adv.dispose();
+  });
+
+  it('beaten enemies stay beaten: back in the area, and after a save and reload', async () => {
+    const adv = new Adventure(GameState.newGame());
+    adv.state.flags.add('gate_open');
+    await adv.enter('halls', 'start');
+    const mite = adv.sandbox.foes.find((f) => f.spawnName === 'steps_a');
+    kill(adv, mite);
+    adv.step(idle, 1 / 60);
+    expect(adv.state.isDefeated('halls', 'steps_a')).toBe(true);
+    await adv.enter('village', 'gate');
+    await adv.enter('halls', 'start');
+    const names = () => adv.sandbox.foes.map((f) => f.spawnName);
+    expect(names()).not.toContain('steps_a');
+    expect(names()).toContain('steps_b');
+    const reloaded = new Adventure(GameState.fromSaveData(adv.state.toSaveData()));
+    await reloaded.enter('halls', 'start');
+    expect(reloaded.sandbox.foes.map((f) => f.spawnName)).not.toContain('steps_a');
+    adv.dispose();
+    reloaded.dispose();
+  });
+
+  it('the crystal switch offers "Strike", and Interact swings at it from anywhere the prompt shows', async () => {
+    for (const angle of [0, 0.8, -0.8, Math.PI]) {
+      const adv = new Adventure(GameState.newGame());
+      adv.state.flags.add('gate_open');
+      await adv.enter('halls', 'start');
+      const sb = adv.sandbox;
+      for (const f of sb.foes) f.hp = 0; // a quiet hall
+      const crystal = sb.objects.find((o) => o.id === 'hall_switch');
+      // Just inside the prompt's reach, facing away a little.
+      const r = USE_RANGE - 0.15;
+      sb.player.body.teleport({ x: crystal.position.x - Math.cos(angle) * r, y: 0.4, z: crystal.position.z + Math.sin(angle) * r });
+      sb.player.facing = yawFromDirection(crystal.position.x - sb.player.position.x, crystal.position.z - sb.player.position.z) + 0.6;
+      for (let i = 0; i < 20; i++) adv.step(idle, 1 / 60);
+      expect(sb.focus?.id, `angle ${angle}`).toBe('hall_switch');
+      expect(sb.focus?.label).toBe('Strike');
+      adv.step({ ...idle, buttons: { interact: { down: true, pressed: true, released: false } } }, 1 / 60);
+      for (let i = 0; i < 40; i++) adv.step(idle, 1 / 60);
+      expect(adv.state.flags.has('hall_gate_open'), `angle ${angle}`).toBe(true);
+      expect(sb.focus?.id).not.toBe('hall_switch'); // no prompt once it's rung
+      adv.dispose();
+    }
   });
 
   it('falling returns you to the last hearthstone with everything you had', async () => {

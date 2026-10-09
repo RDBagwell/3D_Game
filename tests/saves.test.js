@@ -77,18 +77,33 @@ describe('saves', () => {
     expect(saves.save('slot1', { area: 'village' }).ok).toBe(false);
   });
 
-  it('survive the version bump: a v1 save (before settings were saved) loads in v2', () => {
+  it('survive the version bumps: a v1 save (before settings were saved) loads today', () => {
     const storage = new MemoryStorage();
     // Exactly what version 1 wrote (commit "cindermites, ash adepts, the Cinder Warden, saves and the ending").
     const v1 = createSaves(storage);
     v1.version = 1;
     v1.migrations = {};
     v1.validate = () => true;
-    expect(v1.save('slot1', midGame().toSaveData()).ok).toBe(true);
+    const { defeated: _v3, ...v1Data } = midGame().toSaveData();
+    expect(v1.save('slot1', v1Data).ok).toBe(true);
     expect(JSON.parse(storage.getItem('emberwake:slot1') ?? '{}').version).toBe(1);
     const result = loadGame(createSaves(storage), 'slot1');
     expect(result.migratedFrom).toBe(1);
     expect(result.settings).toBe(null);
+    expect(result.state?.toSaveData()).toEqual(midGame().toSaveData());
+  });
+
+  it('survive the version bump: a v2 save (before beaten enemies were remembered) loads in v3', () => {
+    const storage = new MemoryStorage();
+    const v2 = createSaves(storage);
+    v2.version = 2;
+    v2.migrations = {};
+    v2.validate = () => true;
+    const { defeated: _v3, ...v2Data } = midGame().toSaveData();
+    expect(v2.save('slot1', { ...v2Data, settings: null }).ok).toBe(true);
+    const result = loadGame(createSaves(storage), 'slot1');
+    expect(result.migratedFrom).toBe(2);
+    expect(result.state?.defeated.size).toBe(0);
     expect(result.state?.toSaveData()).toEqual(midGame().toSaveData());
   });
 

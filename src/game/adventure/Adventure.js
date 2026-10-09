@@ -93,8 +93,9 @@ export class Adventure {
       spawn,
       feel: this.getFeel?.(),
       seed: `${areaId}:${spawn}`,
-      // A beaten boss stays beaten: `unless` names what keeps it away.
-      spawnEnemy: (s) => !rules[s.name]?.unless || !evaluateCondition(rules[s.name].unless, this.ctx),
+      // Beaten enemies stay beaten (in this area, after a reload, after a
+      // fall); `unless` can also keep one away.
+      spawnEnemy: (s) => !this.state.isDefeated(def.id, s.name) && (!rules[s.name]?.unless || !evaluateCondition(rules[s.name].unless, this.ctx)),
       respawnPlayer: false,
     });
     this.sandbox = sandbox;
@@ -179,8 +180,8 @@ export class Adventure {
       const def = OBJECTS[o.id];
       const open = def.openIf ? evaluateCondition(def.openIf, this.ctx) : false;
       const hidden = def.showIf ? !evaluateCondition(def.showIf, this.ctx) : false;
-      // Gates, doors and chests can be used while closed; pickups and the Hearth while there.
-      const usable = def.dialogue && !(open && def.type !== 'hearth') && !(def.type === 'hearth' && open);
+      // Gates, doors, chests and switches can be used while closed; pickups and the Hearth while there.
+      const usable = (def.dialogue || def.hitEffects) && !(open && def.type !== 'hearth') && !(def.type === 'hearth' && open);
       sb.setObject(o.id, { open, hidden, prompt: usable ? def.prompt ?? 'Examine' : null });
     }
     this.events.emit('refresh', {});
@@ -356,6 +357,8 @@ export class Adventure {
         this.events.emit('shells', { amount: shells, position: { ...foe.position } });
       }
       const rule = (this.area.enemies ?? []).find((x) => x.name === foe.spawnName);
+      // Only the area's own enemies are remembered (not a trial's waves or a boss's summons).
+      if (rule) this.state.defeated.add(`${this.area.id}:${rule.name}`);
       if (rule?.defeat) this.apply(rule.defeat);
     });
     sb.events.on('useItem', () => {
@@ -364,6 +367,15 @@ export class Adventure {
       sb.player.hp = Math.min(sb.player.maxHp, sb.player.hp + heal);
       this.events.emit('healed', { amount: heal, left: this.state.itemCount('tonic') });
     });
+    let refusedAt = -Infinity;
+    sb.events.on('useItemRefused', () => {
+      // One message for a burst of presses.
+      if (sb.tick - refusedAt < 90) return;
+      refusedAt = sb.tick;
+      const text = this.state.itemCount('tonic') === 0 ? 'No tonics left. Bram sells them in the village.' : "You're already at full vigor.";
+      this.events.emit('notice', { text });
+    });
+    sb.events.on('drinkSpilled', () => this.events.emit('notice', { text: 'Spilled! The tonic is still in your bag.' }));
     sb.events.on('died', (d) => {
       if (d.who !== sb.player) return;
       if (this.encounter) this.events.emit('encounter', { id: this.encounter.id, status: 'lost' });

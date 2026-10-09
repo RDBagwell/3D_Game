@@ -230,7 +230,10 @@ possible. See [GAME-FEEL.md](GAME-FEEL.md).
 collision avoidance and lock-on framing are each a setting (the lab's Camera
 section). Collision sweeps a sphere from the player's head towards where the
 camera wants to be and stops short of anything solid; it pulls in instantly
-and eases back out. `CameraShake` adds shake and hit nudges only when
+and eases back out. When that leaves under 2.4 m (a wall at the hero's
+back), it first swings round to the nearest side with room (not while locked
+on, or while the player is turning it), then rises to look down from above;
+the hero fades out if the camera still ends up close. `CameraShake` adds shake and hit nudges only when
 drawing, never to the simulated camera, so they can't affect aiming; it is
 capped and off with reduced motion.
 

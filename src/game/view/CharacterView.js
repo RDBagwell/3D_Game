@@ -64,6 +64,22 @@ export class CharacterView {
     }
   }
 
+  /**
+   * See-through, for when the camera is squeezed up against the hero.
+   * @param {number} opacity  1 = solid
+   */
+  setOpacity(opacity) {
+    const see = opacity < 0.99;
+    for (const m of this.model.materials) {
+      if (m.transparent !== see) {
+        m.transparent = see;
+        m.depthWrite = !see;
+        m.needsUpdate = true;
+      }
+      m.opacity = see ? opacity : 1;
+    }
+  }
+
   /** Flash white for an instant (a hit). */
   hitFlash() {
     this.flash = 1;

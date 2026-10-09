@@ -43,6 +43,33 @@ describe('follow camera', () => {
     expect(cam.position.distanceTo(head)).toBeGreaterThan(4);
   });
 
+  // A wall 0.6 m behind the hero (the camera's side is +Z), as tall as the probe can see.
+  const wallBehind = (/** @type {any} */ o, /** @type {any} */ d, /** @type {number} */ max, /** @type {number} */ r) => {
+    if (d.z <= 0) return null;
+    const t = (0.6 - r - o.z) / d.z;
+    return t < max ? Math.max(0, t) : null;
+  };
+
+  it("a wall at the hero's back: the camera swings round to the side with room", () => {
+    const cam = new FollowCamera({ probe: wallBehind });
+    cam.reset({ x: 0, y: 0, z: 0 }, Math.PI);
+    const yaw = cam.yaw;
+    run(cam, { ...still, target: { x: 0, y: 0, z: 0 } }, 120);
+    expect(Math.abs(angleDelta(cam.yaw, yaw))).toBeGreaterThan(0.5);
+    expect(cam.clearance).toBeGreaterThan(1.6);
+  });
+
+  it("locked on with a wall at the hero's back: the camera rises to look down rather than pressing into their head", () => {
+    const cam = new FollowCamera({ probe: wallBehind });
+    cam.reset({ x: 0, y: 0, z: 0 }, Math.PI);
+    run(cam, { ...still, target: { x: 0, y: 0, z: 0 }, lockTarget: { x: 0, y: 0, z: -4 } }, 90);
+    const head = cam.probeInfo.from;
+    expect(cam.lift).toBeGreaterThan(0.9);
+    expect(cam.position.y).toBeGreaterThan(head.y + 1.2);
+    expect(cam.clearance).toBeGreaterThan(1.4);
+    expect(cam.pitch).toBeCloseTo(-0.32); // the camera's own pitch is untouched
+  });
+
   it('collision off: it goes straight through', () => {
     const cam = new FollowCamera({ probe: () => 1 });
     cam.settings.collision = false;

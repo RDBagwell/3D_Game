@@ -17,6 +17,11 @@ import { clamp, damp, dampFactor, angleDelta, approachAngle, lerp } from '../cor
  *   distance   from the pivot. Collision then pulls the camera in along the
  *              line from the player's head to that spot (a sphere is swept
  *              outwards from the head), so it never ends up inside a wall
+ *   room       when that leaves too little room (a wall at the hero's back),
+ *              the camera first swings round to the nearest side with space
+ *              (not while locked on, or while the player turns it), then
+ *              rises to look down from above: the hero and what's in front
+ *              stay in view instead of the camera ending up in their head
  *
  * Every feature has a switch in `settings`, for the game-feel lab.
  */
@@ -40,6 +45,15 @@ import { clamp, damp, dampFactor, angleDelta, approachAngle, lerp } from '../cor
  *           a framed shot that overrides the follow camera (conversations): look at `pivot`
  *           from this angle and distance; collision still applies
  */
+
+/** Less room than this (metres) behind the hero, and the camera starts to rise. */
+const LIFT_BELOW = 2.4;
+/** Room (metres) the lift looks for: enough to see the hero whole. */
+const LIFT_ROOM = 1.8;
+/** Pitches it can rise to, gentlest first (looking down at about 45, 60, 75 and 83 degrees). */
+const LIFT_PITCHES = [-0.8, -1.05, -1.3, -1.45];
+/** Turns (radians) it tries, nearest first, to find room to the side. */
+const SWING_TRIES = [0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.6, -1.6];
 
 export class FollowCamera {
   /**
@@ -65,6 +79,12 @@ export class FollowCamera {
     this.distance = distance;
     /** 0..1: how far along the head-to-camera line the camera may sit (collision). */
     this.pull = 1;
+    /** 0..1: how far the camera has risen to look down from above (tight spots). */
+    this.lift = 0;
+    /** The pitch the lift rises to (the gentlest with room enough). */
+    this.liftPitch = LIFT_PITCHES[0];
+    /** Metres from the hero's head to the camera, after collision (WorldView fades the hero when close). */
+    this.clearance = distance;
     this.pivot = new Vector3();
     this.position = new Vector3();
     this.prevPivot = new Vector3();
@@ -86,6 +106,7 @@ export class FollowCamera {
     this.pivot.set(target.x, target.y + this.pivotHeight, target.z);
     this.distance = this.baseDistance;
     this.pull = 1;
+    this.lift = 0;
     this.place();
     this.snapshot();
     this.initialised = true;
@@ -161,24 +182,64 @@ export class FollowCamera {
     // at the pivot: look-ahead and framing can put the pivot inside a prop,
     // and a probe that starts inside something always reports a hit.
     this.distance = lerp(this.distance, wantedDistance, dampFactor(0.3, dt));
-    const dir = this.direction(new Vector3());
-    const desired = new Vector3().copy(this.pivot).addScaledVector(dir, this.distance);
     const head = new Vector3(input.target.x, input.target.y + this.pivotHeight, input.target.z);
-    const ray = new Vector3().subVectors(desired, head);
-    const length = ray.length();
-    let allowed = 1;
-    let hit = false;
-    if (s.collision && length > 1e-3) {
-      ray.divideScalar(length);
-      const free = this.probe(head, ray, length, this.probeRadius);
-      if (free !== null && free < length) {
-        allowed = Math.max(0, free - 0.05) / length;
-        hit = true;
+    /**
+     * Where the camera would go at `pitch` and `yaw`, and how much of the way is free.
+     * @param {number} pitch
+     * @param {number} [yaw]
+     */
+    const reach = (pitch, yaw = this.yaw) => {
+      const desired = new Vector3().copy(this.pivot).addScaledVector(this.direction(new Vector3(), pitch, yaw), this.distance);
+      const ray = new Vector3().subVectors(desired, head);
+      const length = ray.length();
+      let allowed = 1;
+      let hit = false;
+      if (s.collision && length > 1e-3) {
+        ray.divideScalar(length);
+        const free = this.probe(head, ray, length, this.probeRadius);
+        if (free !== null && free < length) {
+          allowed = Math.max(0, free - 0.05) / length;
+          hit = true;
+        }
+      }
+      return { desired, length, allowed, hit, room: length * allowed };
+    };
+
+    // Too little room behind: swing round to the nearest side with room.
+    if (s.collision && !input.shot && !input.lockTarget && !lookMoved && reach(this.pitch).room < LIFT_BELOW) {
+      const turn = SWING_TRIES.find((t) => reach(this.pitch, this.yaw + t).room >= LIFT_ROOM);
+      if (turn !== undefined) {
+        this.yaw += turn * dampFactor(0.3, dt);
+        this.recenterYaw = null;
       }
     }
+
+    // Still too little room: rise and look down from above, as gently as
+    // leaves room enough. Rise quickly; settle back once there's space again.
+    let wantLift = 0;
+    if (s.collision && !input.shot) {
+      const level = reach(this.pitch);
+      if (level.room < LIFT_BELOW) {
+        let best = { pitch: this.pitch, room: level.room };
+        for (const pitch of LIFT_PITCHES) {
+          if (pitch >= this.pitch) continue;
+          const room = reach(pitch).room;
+          if (room > best.room) best = { pitch, room };
+          if (room >= LIFT_ROOM) break;
+        }
+        if (best.room > level.room + 0.3) {
+          wantLift = clamp((LIFT_BELOW - level.room) / (LIFT_BELOW - 0.6), 0, 1);
+          this.liftPitch = damp(this.liftPitch, best.pitch, 0.15, dt);
+        }
+      }
+    }
+    this.lift = wantLift > this.lift ? lerp(this.lift, wantLift, dampFactor(0.08, dt)) : lerp(this.lift, wantLift, dampFactor(0.5, dt));
+    const { desired, length, allowed, hit } = reach(lerp(this.pitch, Math.min(this.pitch, this.liftPitch), this.lift));
+
     // Pull in at once (never show the inside of a wall); ease back out.
     this.pull = allowed < this.pull ? allowed : lerp(this.pull, allowed, dampFactor(0.25, dt));
     this.position.copy(head).lerp(desired, this.pull);
+    this.clearance = this.position.distanceTo(head);
     this.probeInfo.from.copy(head);
     this.probeInfo.to.copy(desired);
     this.probeInfo.hit = hit;
@@ -189,10 +250,12 @@ export class FollowCamera {
   /**
    * Unit vector from the pivot to the camera.
    * @param {Vector3} out
+   * @param {number} [pitch]  default: the camera's own
+   * @param {number} [yaw]  default: the camera's own
    */
-  direction(out) {
-    const c = Math.cos(this.pitch);
-    return out.set(Math.sin(this.yaw) * c, -Math.sin(this.pitch), Math.cos(this.yaw) * c).normalize();
+  direction(out, pitch = this.pitch, yaw = this.yaw) {
+    const c = Math.cos(pitch);
+    return out.set(Math.sin(yaw) * c, -Math.sin(pitch), Math.cos(yaw) * c).normalize();
   }
 
   /** @private */
