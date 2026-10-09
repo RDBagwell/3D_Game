@@ -1,0 +1,38 @@
+{
+  "$comment": "Bram the smith, by the forge. Sells tonics.",
+  "speaker": "Bram",
+  "start": "check",
+  "nodes": {
+    "check": {
+      "branch": [
+        { "if": { "flag": "hearth_lit" }, "next": "after" },
+        { "if": { "all": [{ "hasItem": "tempered_blade" }, { "notFlag": "hearth_lit" }] }, "next": "blade" },
+        { "if": { "flag": "bram_met" }, "next": "again" },
+        { "next": "hello" }
+      ]
+    },
+    "hello": {
+      "text": "Forge is cold, so I'm not forging. I'm brewing. Ember tonic: pepper, honey and something I won't tell you. Puts heart back in you.",
+      "effects": [{ "setFlag": "bram_met" }],
+      "next": "menu"
+    },
+    "again": { "text": "Still breathing? Good for business.", "next": "menu" },
+    "blade": { "text": "That's Dorran's old blade on your back. I re-edged it for him years ago. Hits like a falling anvil. Treat it nicely.", "next": "menu" },
+    "menu": {
+      "text": "What'll it be? You've {shells} shells.",
+      "choices": [
+        { "text": "Let me see the tonics.", "effects": [{ "shop": "bram" }] },
+        { "text": "Any advice?", "next": "advice" },
+        { "text": "Nothing, thanks.", "end": true }
+      ]
+    },
+    "advice": {
+      "text": "Drinking takes a moment, so don't do it with a skeleton in your face. Back off, or wait till it's swung and missed. Same goes for everything, really.",
+      "next": "menu"
+    },
+    "after": {
+      "text": "Forge is lit! First time in a month. I'll make you something proper one day. Tonics are still for sale, mind.",
+      "next": "menu"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "$comment": "The Hearth gate in the village, while it's shut.",
+  "speaker": "",
+  "start": "look",
+  "nodes": {
+    "look": {
+      "text": "A heavy portcullis, set into the cliff. Cold air breathes through it, smelling of old ash. Elder Ina keeps the key.",
+      "end": true
+    }
+  }
+}

@@ -20,11 +20,13 @@ here.
 
 ### KayKit packs by Kay Lousberg (`public/models/`)
 
-Downloaded from the packs' GitHub repositories on 2026-10-08 and optimised
-by `npm run assets` (meshopt compression, textures resized to 256 px WebP;
-see `tools/asset-sources.mjs`).
+Downloaded from the packs' GitHub repositories (Adventurers, Skeletons and
+Prototype Bits on 2026-10-08; Dungeon Remastered and Medieval Hexagon on
+2026-10-09) and optimised by `npm run assets` (meshopt compression, textures
+resized to 256 px WebP, unused animation clips removed; see
+`tools/asset-sources.mjs`).
 
-**Licence** (from each pack's `LICENSE.txt`, recorded 2026-10-08):
+**Licence** (from each pack's `LICENSE.txt`, the same text in all five, recorded 2026-10-08 and 2026-10-09):
 
 > License: (Creative Commons Zero, CC0)
 > http://creativecommons.org/publicdomain/zero/1.0/
@@ -40,14 +42,60 @@ screen. CC0 files may sit in a public repository.
 
 | File | Was | What | Source | Licence | Status |
 | --- | --- | --- | --- | --- | --- |
-| `public/models/knight.glb` | `Characters/gltf/Knight.glb` | The hero: rigged knight with 76 animations and every accessory (the game shows the one-handed sword and the round shield) | [KayKit Character Pack: Adventurers 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 1.0 | keep |
-| `public/models/skeleton_warrior.glb` | `Characters/gltf/Skeleton_Warrior.glb` | The grunt enemy: rigged skeleton with 95 animations | [KayKit Character Pack: Skeletons 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0) | CC0 1.0 | keep |
+| `public/models/knight.glb` | `Characters/gltf/Knight.glb` | The hero: rigged knight with every accessory (the game shows the one-handed sword and the round shield); 18 of its 76 animations kept | [KayKit Character Pack: Adventurers 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0) | CC0 1.0 | keep |
+| `public/models/skeleton_warrior.glb` | `Characters/gltf/Skeleton_Warrior.glb` | The grunt enemy (and, larger, the Cinder Warden boss): rigged skeleton; 20 of its animations kept | [KayKit Character Pack: Skeletons 1.0](https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Skeletons-1.0) | CC0 1.0 | keep |
 | `public/models/skeleton_blade.glb` | `Assets/gltf/Skeleton_Blade.gltf` | The grunt's sword (attached to its right hand in code) | KayKit Skeletons 1.0 | CC0 1.0 | keep |
 | `public/models/skeleton_shield.glb` | `Assets/gltf/Skeleton_Shield_Small_A.gltf` | The grunt's shield | KayKit Skeletons 1.0 | CC0 1.0 | keep |
 | `public/models/dummy.glb` | `Assets/gltf/Dummy_Base.gltf` | Training dummy (base, body, arms, head, target) | [KayKit Prototype Bits 1.0](https://github.com/KayKit-Game-Assets/KayKit-Prototype-Bits-1.0) | CC0 1.0 | keep |
 | `public/models/barrel.glb` | `Assets/gltf/Barrel_A.gltf` | Blue barrel (scenery) | KayKit Prototype Bits 1.0 | CC0 1.0 | keep |
 | `public/models/crate.glb` | `Assets/gltf/Box_A.gltf` | Cardboard box (scenery) | KayKit Prototype Bits 1.0 | CC0 1.0 | keep |
 | `public/models/target_stand.glb` | `Assets/gltf/target_stand_A.gltf` | Archery target on a stand (scenery) | KayKit Prototype Bits 1.0 | CC0 1.0 | keep |
+| `public/models/skeleton_mage.glb` | `Characters/gltf/Skeleton_Mage.glb` | The ash adept (caster enemy); 20 animations kept | KayKit Skeletons 1.0 | CC0 1.0 | keep |
+| `public/models/skeleton_minion.glb` | `Characters/gltf/Skeleton_Minion.glb` | The cindermite (swarm enemy), drawn small; 20 animations kept | KayKit Skeletons 1.0 | CC0 1.0 | keep |
+| `public/models/skeleton_axe.glb` | `Assets/gltf/Skeleton_Axe.gltf` | The Cinder Warden's axe | KayKit Skeletons 1.0 | CC0 1.0 | keep |
+| `public/models/skeleton_staff.glb` | `Assets/gltf/Skeleton_Staff.gltf` | The ash adept's staff | KayKit Skeletons 1.0 | CC0 1.0 | keep |
+| `public/models/npc_mage.glb` | `Characters/gltf/Mage.glb` | Elder Ina; 4 animations kept | KayKit Adventurers 1.0 | CC0 1.0 | keep |
+| `public/models/npc_barbarian.glb` | `Characters/gltf/Barbarian.glb` | Bram the smith; 4 animations kept | KayKit Adventurers 1.0 | CC0 1.0 | keep |
+| `public/models/npc_rogue_hooded.glb` | `Characters/gltf/Rogue_Hooded.glb` | Wren; 4 animations kept | KayKit Adventurers 1.0 | CC0 1.0 | keep |
+| `public/models/npc_rogue.glb` | `Characters/gltf/Rogue.glb` | Dorran; 4 animations kept | KayKit Adventurers 1.0 | CC0 1.0 | keep |
+| `public/models/village/home_a.glb` | `Assets/gltf/buildings/red/building_home_A_red.gltf` | House (village) | [KayKit Medieval Hexagon Pack 1.0](https://github.com/KayKit-Game-Assets/KayKit-Medieval-Hexagon-Pack-1.0) | CC0 1.0 | keep |
+| `public/models/village/home_b.glb` | `Assets/gltf/buildings/yellow/building_home_B_yellow.gltf` | Two-storey house (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/home_c.glb` | `Assets/gltf/buildings/blue/building_home_A_blue.gltf` | House (blue) (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/smithy.glb` | `Assets/gltf/buildings/blue/building_blacksmith_blue.gltf` | Bram's forge (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/tavern.glb` | `Assets/gltf/buildings/green/building_tavern_green.gltf` | Tavern (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/well.glb` | `Assets/gltf/buildings/blue/building_well_blue.gltf` | Well (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/market.glb` | `Assets/gltf/buildings/red/building_market_red.gltf` | Market stalls (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/trees_a.glb` | `Assets/gltf/decoration/nature/trees_A_large.gltf` | Cluster of trees (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/trees_b.glb` | `Assets/gltf/decoration/nature/trees_B_medium.gltf` | Cluster of trees (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/tree.glb` | `Assets/gltf/decoration/nature/tree_single_A.gltf` | Tree (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/rock_a.glb` | `Assets/gltf/decoration/nature/rock_single_A.gltf` | Flat rock (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/rock_c.glb` | `Assets/gltf/decoration/nature/rock_single_C.gltf` | Rock (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/fence.glb` | `Assets/gltf/buildings/neutral/fence_wood_straight.gltf` | Wooden fence (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/crate_big.glb` | `Assets/gltf/decoration/props/crate_A_big.gltf` | Crate (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/sack.glb` | `Assets/gltf/decoration/props/sack.gltf` | Sack (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/tent.glb` | `Assets/gltf/decoration/props/tent.gltf` | Tent (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/flag.glb` | `Assets/gltf/decoration/props/flag_red.gltf` | Flag (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/wheelbarrow.glb` | `Assets/gltf/decoration/props/wheelbarrow.gltf` | Wheelbarrow (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/weaponrack.glb` | `Assets/gltf/decoration/props/weaponrack.gltf` | Weapon rack (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/village/mountain.glb` | `Assets/gltf/decoration/nature/mountain_A_grass_trees.gltf` | Hill with trees (the backdrop) (village) | KayKit Medieval Hexagon 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/wall.glb` | `Assets/gltf/wall.gltf.glb` | Wall module (Hearth Halls) | [KayKit Dungeon Remastered 1.0](https://github.com/KayKit-Game-Assets/KayKit-Dungeon-Remastered-1.0) | CC0 1.0 | keep |
+| `public/models/dungeon/wall_doorway.glb` | `Assets/gltf/wall_doorway.glb` | Wall with a doorway (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/wall_corner.glb` | `Assets/gltf/wall_corner.gltf.glb` | Corner wall (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/wall_gated.glb` | `Assets/gltf/wall_gated.gltf.glb` | Wall with a portcullis (gates) (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/floor.glb` | `Assets/gltf/floor_tile_large.gltf.glb` | Floor tile (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/floor_rocks.glb` | `Assets/gltf/floor_tile_large_rocks.gltf.glb` | Floor tile with rocks (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/column.glb` | `Assets/gltf/column.gltf.glb` | Column (room corners) (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/pillar.glb` | `Assets/gltf/pillar_decorated.gltf.glb` | Decorated pillar (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/torch.glb` | `Assets/gltf/torch_mounted.gltf.glb` | Wall torch (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/chest.glb` | `Assets/gltf/chest.glb` | Chest (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/chest_gold.glb` | `Assets/gltf/chest_gold.glb` | Gold chest (the Hearth Key) (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/key.glb` | `Assets/gltf/key.gltf.glb` | Key (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/banner.glb` | `Assets/gltf/banner_red.gltf.glb` | Banner (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/rubble.glb` | `Assets/gltf/rubble_large.gltf.glb` | Rubble (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/barrel.glb` | `Assets/gltf/barrel_large.gltf.glb` | Barrel (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/crates.glb` | `Assets/gltf/crates_stacked.gltf.glb` | Stacked crates (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/sword_shield.glb` | `Assets/gltf/sword_shield.gltf.glb` | Sword and shield wall decoration (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
+| `public/models/dungeon/candles.glb` | `Assets/gltf/candle_triple.gltf.glb` | Candles (Hearth Halls) | KayKit Dungeon Remastered 1.0 | CC0 1.0 | keep |
 
 If a model is missing (say, a fresh clone before `npm run assets`, or a
 failed download), the game draws a placeholder shape instead, so it always
@@ -58,11 +106,31 @@ runs.
 | File | What | Source | Licence | Status |
 | --- | --- | --- | --- | --- |
 | `public/favicon.svg` | Sword over an orange disc | Drawn for this project | Project's own | keep |
-| Sound effects | Sword swings, hits, blocks, roll, footsteps per surface (grass, dirt, stone, wood), lock-on, enemy wind-up, UI | Synthesised at runtime with Web Audio (`src/game/data/sounds.js`) | Project's own | keep |
+| Sound effects and ambience | Combat, footsteps per surface (grass, dirt, stone, wood, sand), wind-ups, the boss, the world, UI; looping ambient beds per area (docs/AUDIO.md) | Synthesised at runtime with Web Audio (`src/game/data/sounds.js`) | Project's own | keep |
 | Training grounds | Ground, ramp, steps, walls, platforms | Built from boxes in code (`src/game/scenes/trainingGrounds.js`) | Project's own | keep |
+| Cinder Cove and the Hearth Halls | Layout, ground, cliffs, dock, sea, paths; the dungeon's rooms from KayKit modules | Data in `src/game/data/areas/`, built by `src/game/world/buildArea.js` | Project's own (the models are KayKit's, above) | keep |
+| Story, dialogue, quests | Emberwake's story and every line (docs/STORY.md, `src/game/data/dialogues/`) | Written for this project, set in Island RPG's world | Project's own | keep |
 | Sky, particles, HUD, lock-on reticle, touch controls | Gradient sky, hit sparks and dust, health bar, reticle, on-screen buttons | Drawn in code (shaders, canvas, CSS) | Project's own | keep |
 | UI font | The system font (`system-ui`) | The player's operating system | Not shipped | keep |
-| `public/music/*.ogg` | Not there yet: Robert's original music goes here (see [docs/ASSETS-TODO.md](docs/ASSETS-TODO.md)) | Robert Bagwell | Project's own | to do |
+| `public/music/*.ogg` | Not there yet: Robert's original music goes here, five tracks (see [docs/AUDIO.md](docs/AUDIO.md)) | Robert Bagwell | Project's own | to do |
+
+## Credits
+
+The game's credits screen is generated from this table
+(`src/game/content/credits.js`), and `tests/credits.test.js` checks that
+every pack listed above appears here, so the two can't drift apart.
+
+| Work | By | Licence | Link |
+| --- | --- | --- | --- |
+| KayKit Character Pack: Adventurers 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Character Pack: Skeletons 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Prototype Bits 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Dungeon Remastered 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| KayKit Medieval Hexagon Pack 1.0 | Kay Lousberg | CC0 1.0 | [kaylousberg.com](https://kaylousberg.com) |
+| Game, code, sound effects, levels and story | Robert Bagwell, with Claude (Anthropic) | Project's own | [github.com/RDBagwell](https://github.com/RDBagwell) |
+| Dialogue system, save system and content format | Ported from Island RPG by Robert Bagwell | Project's own | [RDBagwell/rpg](https://github.com/RDBagwell/rpg) |
+| Music | Robert Bagwell (tracks go in `public/music/`, see docs/AUDIO.md) | Project's own | |
+| Engines | three.js authors (MIT), Rapier by Dimforge (Apache 2.0) | Open source | [threejs.org](https://threejs.org), [rapier.rs](https://rapier.rs) |
 
 ## Robert's own work (`art/blender/`)
 

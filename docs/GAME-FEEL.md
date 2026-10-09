@@ -278,6 +278,26 @@ down, so attacking into a wind-up you've seen is a choice with a cost.
 Switch telegraphs off and the wind-up is still there, but only in the
 animation: the same fight suddenly feels unfair.
 
+**The rest of the cast follows the same rules.** Cindermites wind up for 20
+frames (short, but there's a ring, a hiss and a caption), and two may attack
+at once. Ash adepts wind up 44 frames before each bolt, stop aiming 10
+frames before they let go, and the bolt flies at 8.5 m/s: roll through it,
+block it, or cut it out of the air. The Cinder Warden's sweep winds up for
+34 frames and its slam for 48; the ring shows each attack's real reach, and
+the slam leaves an opening of about two seconds (its axe stuck, its core
+glowing, double damage).
+
+**Testing fairness.** `tests/helpers/bossBot.js` is a scripted player that
+only sees what you see (states, distances, the closing ring) and only
+presses buttons. It fights the Warden with ordinary tactics: keep a few
+metres away, roll when the ring has nearly closed, punish the opening. On
+Polished it wins at every reaction timing tried (rolling 4, 8, 12 and 16
+frames before the blow). On Raw (no telegraphs, no roll invulnerability) the
+same player lost two of those four fights. `tests/enemies.test.js` keeps
+both facts true. It's not a human playtest, and it's listed as one in the
+PR, but it makes "fair on Polished, harder on Raw" something a test can
+break.
+
 ---
 
 ## Camera

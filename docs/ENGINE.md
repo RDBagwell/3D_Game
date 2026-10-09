@@ -42,24 +42,35 @@ flowchart TD
     Animator
     AudioManager --> synth
     MusicManager --> AudioManager
+    Ambience --> AudioManager
+    SaveSystem --> validateShape
     StateMachine
     Gizmos
     PerfHud
   end
   subgraph game [src/game]
-    Game --> Sandbox
+    Game --> Adventure
     Game --> WorldView
     Game --> Hud
     Game --> Menus
+    Game --> DialogueBox
     Game --> LabPanel
+    Game --> SaveSystem
+    Adventure --> GameState
+    Adventure --> Sandbox
+    Adventure --> DialogueRunner --> conditions
+    DialogueRunner --> effects
+    Sandbox --> buildArea --> Level
     Sandbox --> Player --> StateMachine
-    Sandbox --> Grunt --> GruntBrain --> StateMachine
+    Sandbox --> Enemy --> GruntBrain --> StateMachine
+    Enemy --> CasterBrain
+    Enemy --> WardenBrain
     Sandbox --> Dummy
     Sandbox --> hitboxes
     Sandbox --> lockOn
     Sandbox --> FollowCamera
-    Sandbox --> Level
     WorldView --> CharacterView --> Animator
+    WorldView --> ObjectView
     WorldView --> Gizmos
   end
 ```
@@ -73,13 +84,18 @@ flowchart TD
 | `engine/input/` | `Input` (actions over keyboard, mouse, gamepads, touch), `InputBuffer`, `TouchControls` |
 | `engine/camera/` | `FollowCamera` (orbit, smoothing, look-ahead, collision, lock-on framing, recentre), `CameraShake` |
 | `engine/assets/` | `AssetLoader` (meshopt glTF with real progress), `Animator` (one mixer, cross-fades) |
-| `engine/audio/` | `AudioManager` (synthesised, positional sound effects), `MusicManager` (cross-fading tracks), `synth.js` |
+| `engine/audio/` | `AudioManager` (synthesised, positional sound effects), `MusicManager` (cross-fading tracks), `Ambience` (looping beds per place), `synth.js` |
+| `engine/save/` | `SaveSystem` (versioned saves with migrations, corrupt-save handling) and `validateShape`, ported from Island RPG |
 | `engine/debug/` | `Gizmos` (debug lines in one draw call), `PerfHud` |
-| `game/sim/` | `Sandbox`: the whole simulation, one `step(inputFrame)` at a time |
-| `game/player/`, `game/enemies/`, `game/combat/` | The hero's state machine, the grunt and its brain, the dummy, hitboxes, lock-on |
-| `game/view/` | `WorldView` (renderer, lights, feedback), `CharacterView` (models, animation, flashes, telegraphs), `Effects`, `models.js` |
-| `game/ui/`, `game/lab/` | HUD, menus, the game-feel lab panel |
-| `game/data/` | All tuning and content: attacks (frame data), actors, the lab's settings and presets, sounds, the asset manifest |
+| `game/sim/` | `Sandbox`: the whole simulation of one area, one `step(inputFrame)` at a time: player, enemies, projectiles, NPCs, objects, exits |
+| `game/adventure/` | `Adventure` (the game's rules on top of the sandbox: travel, checkpoints, conversations, quests, encounters), `GameState`, ported `conditions` and `effects` |
+| `game/dialogue/` | `DialogueRunner` and `validateDialogue`, ported from Island RPG |
+| `game/content/` | The content validator with its reachability search; the credits read from ASSETS.md |
+| `game/world/` | `buildArea`: an area's data → a scene graph with the Blender names |
+| `game/player/`, `game/enemies/`, `game/combat/` | The hero's state machine; `Enemy` with its brains (melee, caster, the Warden); the dummy; hitboxes; lock-on |
+| `game/view/` | `WorldView` (renderer, a scene per area, lights, quality, feedback), `CharacterView` (models, animation, flashes, telegraphs), `ObjectView` (gates, chests, switches...), `Effects`, `models.js` |
+| `game/ui/`, `game/lab/` | HUD, menus (title, slots, pause, quests, inventory, shop, settings, credits), the dialogue box, the game-feel lab panel |
+| `game/data/` | All tuning and content: attacks and projectiles (frame data), actors, areas, NPCs, objects, dialogues, quests, items, shops, encounters, events, flags, sounds and ambience, graphics presets, the asset manifest. See [CONTENT.md](CONTENT.md) |
 
 ## The game loop
 
@@ -152,11 +168,30 @@ Rapier is used for movement and for the camera's collision probe
 capsules in `game/combat/hitboxes.js`: checked once per update in a known
 order, no extra bodies to keep in sync with animations, and trivial to test.
 
-## Levels
+## Levels and areas
 
 `Level.fromScene(root, physics)` turns a scene graph into colliders,
-footstep surfaces, spawns and triggers using the Blender naming convention.
-The guide is [BLENDER.md](BLENDER.md).
+footstep surfaces, spawns, triggers, exits, and where NPCs, objects and
+markers stand, using the Blender naming convention. The guide is
+[BLENDER.md](BLENDER.md).
+
+The adventure's areas are data (`src/game/data/areas/`). `buildArea()`
+turns one into a scene graph with those same names, so the game reads it
+exactly as it would read a Blender export. One area is simulated at a time:
+walking into an `exit_` box makes the Adventure ask the Game to travel; the
+Game fades out, the Adventure builds the next area's Sandbox (a fresh
+physics world), the WorldView swaps in a new scene, and the Game fades back
+in. Neighbouring areas are built and their shaders compiled in idle time
+beforehand, so the swap is quick.
+
+## The adventure layer
+
+`Adventure` (`src/game/adventure/`) sits between the Game and the Sandbox.
+It owns the `GameState` (flags, items, shells, checkpoint, quest progress)
+and turns sandbox events into progress: exits, hearthstones, Interact on an
+NPC or object (a dialogue), switches struck, enemies beaten, tonics drunk,
+falling. It runs headless, so `tests/adventure.test.js` plays the story from
+the dock to the ending in Node.
 
 ## Input
 
@@ -195,7 +230,10 @@ possible. See [GAME-FEEL.md](GAME-FEEL.md).
 collision avoidance and lock-on framing are each a setting (the lab's Camera
 section). Collision sweeps a sphere from the player's head towards where the
 camera wants to be and stops short of anything solid; it pulls in instantly
-and eases back out. `CameraShake` adds shake and hit nudges only when
+and eases back out. When that leaves under 2.4 m (a wall at the hero's
+back), it first swings round to the nearest side with room (not while locked
+on, or while the player is turning it), then rises to look down from above;
+the hero fades out if the camera still ends up close. `CameraShake` adds shake and hit nudges only when
 drawing, never to the simulated camera, so they can't affect aiming; it is
 capped and off with reduced motion.
 
@@ -215,9 +253,19 @@ stretches a clip to match an attack's frame data.
 All sound effects are synthesised (`game/data/sounds.js`), so the game
 ships no audio files. `AudioManager.play(name, { position })` goes through
 an HRTF panner when positional sound is on; the listener follows the camera.
-Cues that matter for gameplay carry a caption. `MusicManager.play(name)`
-cross-fades to `music/<name>.ogg` if the name is listed in `MUSIC_TRACKS`,
-and plays silence otherwise.
+Cues that matter for gameplay carry a caption. `Ambience` loops a bed per
+area. `MusicManager.play(name)` cross-fades to `music/<name>.ogg` if that
+file exists (the build lists `public/music/`), and plays silence otherwise.
+[AUDIO.md](AUDIO.md) has the track names.
+
+## Saves
+
+`SaveSystem` (ported from Island RPG) keeps one versioned JSON record per
+slot in `localStorage`, upgrades old versions through `MIGRATIONS`,
+validates what it loads (`validateShape`), and reports a damaged save
+instead of throwing (a copy is kept under `<key>:<slot>:corrupt`). If
+storage is blocked it keeps saves in memory for the session.
+`src/game/saves.js` is the game's format and its history.
 
 ## Debugging
 
@@ -240,12 +288,14 @@ data test checks it's well formed.
 
 ### …add an enemy type
 
-1. Numbers in `ENEMIES` (`src/game/data/actors.js`).
-2. A class like `Grunt` (body) and, if it thinks differently, a brain like
-   `GruntBrain` with its own transition table. Test the brain with made-up
-   perceptions, like `tests/gruntAi.test.js`.
-3. A `case` in `Sandbox`'s spawn loop, and a model in `WorldView`.
-4. Place it in a level with `spawn_enemy_<type>`.
+1. Numbers in `ENEMIES` (`src/game/data/actors.js`), with `brain: 'melee'`,
+   `'caster'` or `'warden'`. A new melee enemy needs nothing else (the
+   cindermite is only data).
+2. If it thinks differently, a brain like `CasterBrain` with its own
+   transition table, added to `BRAINS` in `enemies/Enemy.js`. Test it with
+   made-up perceptions, like `tests/enemies.test.js`.
+3. A model in `makeFoe` (`view/models.js`).
+4. Place it with `spawn_enemy_<type>_<name>`, or in an encounter's waves.
 
 ### …add a game-feel technique to the lab
 
@@ -264,7 +314,8 @@ data test checks it's well formed.
 - **No jump.** The action list has none; coyote time is applied to the roll.
 - **Root motion isn't used.** Movement is code-driven (KayKit's clips are
   in place), so the lab has no root-motion switch.
-- **One level at a time.** Travel between levels comes in session 2.
+- **One area at a time.** Areas are separate scenes and physics worlds,
+  joined by fades, not one streamed world.
 - **Hit-stop freezes the whole fight**, not just the two fighters. With
   one fight on screen that reads the same and is simpler.
 - **Type checking covers `src/` only**, as in Island RPG.

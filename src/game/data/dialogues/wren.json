@@ -1,0 +1,55 @@
+{
+  "$comment": "Wren (Island RPG's Wren, from Gull Isle), on the shore. The satchel side quest: a fetch with the inventory.",
+  "speaker": "Wren",
+  "start": "check",
+  "nodes": {
+    "check": {
+      "branch": [
+        { "if": { "flag": "hearth_lit" }, "next": "after" },
+        { "if": { "flag": "satchel_returned" }, "next": "thanks_again" },
+        { "if": { "hasItem": "satchel" }, "next": "found" },
+        { "if": { "flag": "wren_asked" }, "next": "waiting" },
+        { "next": "hello" }
+      ]
+    },
+    "hello": {
+      "text": "Oh! Sorry, I thought you were a gull. A big one. I'm Wren, from Gull Isle. I study the wisps. Or I did, until they stopped turning up.",
+      "effects": [{ "setFlag": "wren_met" }],
+      "next": "hello2"
+    },
+    "hello2": {
+      "text": "I've followed the last of them here. And then I lost my satchel. Every note I've ever taken, in one bag, dropped somewhere on the rocks behind the houses.",
+      "choices": [
+        { "text": "I'll look for it.", "effects": [{ "setFlag": "wren_asked" }], "next": "thanks_early" },
+        { "text": "Why follow the wisps here?", "next": "why" },
+        { "text": "Good luck with that.", "end": true }
+      ]
+    },
+    "why": {
+      "text": "Because they're all born here! There's a fire under that hill. My uncle Tomas says I'll fall in it one day.",
+      "next": "hello2"
+    },
+    "thanks_early": {
+      "text": "Would you? North-east of the square, among the big rocks. Leather, scuffed, smells faintly of seaweed. Like me.",
+      "end": true
+    },
+    "waiting": { "text": "Any luck? Big rocks, north-east of the square. Smells of seaweed.", "end": true },
+    "found": {
+      "text": "My satchel! You found it! The notes, the sketches... even the sandwich. Don't tell anyone about the sandwich.",
+      "effects": [{ "takeItem": "satchel" }, { "giveItem": "vigor_charm" }, { "setFlag": "satchel_returned" }],
+      "next": "found2"
+    },
+    "found2": {
+      "text": "Take my Vigor Charm. It's a wisp-stone: they hum when you're in trouble and somehow you just... get back up. You'll need it more than me.",
+      "end": true
+    },
+    "thanks_again": {
+      "text": "My notes say the wisps are born in threes and argue constantly. Science! Be careful down there.",
+      "end": true
+    },
+    "after": {
+      "text": "Look at them! Hundreds! I'm going to need a bigger satchel. And a bigger sandwich.",
+      "end": true
+    }
+  }
+}

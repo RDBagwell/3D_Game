@@ -1,0 +1,43 @@
+{
+  "$comment": "Dorran, retired gate guard, at the training ring. The ring trial side quest: a combat challenge.",
+  "speaker": "Dorran",
+  "start": "check",
+  "nodes": {
+    "check": {
+      "branch": [
+        { "if": { "all": [{ "flag": "trial_won" }, { "notFlag": "blade_given" }] }, "next": "reward" },
+        { "if": { "flag": "blade_given" }, "next": "done" },
+        { "if": { "flag": "dorran_met" }, "next": "again" },
+        { "next": "hello" }
+      ]
+    },
+    "hello": {
+      "text": "Hm. Courier. Soft hands, soft boots. You'll be wanting the training dummy. It doesn't hit back.",
+      "effects": [{ "setFlag": "dorran_met" }],
+      "next": "offer"
+    },
+    "again": { "text": "Back for more? The pens are full.", "next": "offer" },
+    "offer": {
+      "text": "I kept a few of those ash-bound things in the pens, for practice. Beat everything I let out and you can have my old sword. Interested?",
+      "choices": [
+        { "text": "Let them out.", "next": "start" },
+        { "text": "How do I win?", "next": "tips" },
+        { "text": "Not today.", "end": true }
+      ]
+    },
+    "tips": {
+      "text": "Lock on. Watch for the wind-up: when they glow and that ring closes, roll through it or get your shield up. Then hit them while they're recovering.",
+      "next": "offer"
+    },
+    "start": {
+      "text": "Into the ring, then. Don't die. It's bad for my reputation.",
+      "effects": [{ "encounter": "ring_trial" }]
+    },
+    "reward": {
+      "text": "Well. You're less soft than you look. Here: my old Tempered Blade. Bram put an edge on it you could shave with. Don't shave with it.",
+      "effects": [{ "giveItem": "tempered_blade" }, { "setFlag": "blade_given" }],
+      "end": true
+    },
+    "done": { "text": "The pens are empty and my sword's on your back. Go and do something useful with it.", "end": true }
+  }
+}

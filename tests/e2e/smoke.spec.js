@@ -8,24 +8,35 @@ test.describe('smoke', () => {
     const errors = collectErrors(page);
     await openGame(page);
     await expect(page.locator('.menu-title')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New game' })).toBeVisible();
     expect(await page.evaluate(() => /** @type {Game} */ (window).game.mode)).toBe('title');
     expect(errors).toEqual([]);
   });
 
-  test('the player moves, and an attack lands on the dummy', async ({ page }) => {
+  test('a new game starts on the dock, and the player walks with the keyboard', async ({ page }) => {
     const errors = collectErrors(page);
     await openGame(page);
-    await page.getByRole('button', { name: 'Play' }).click();
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play' && /** @type {Game} */ (window).game.adventure?.state.area === 'village');
     const start = await page.evaluate(() => ({ .../** @type {Game} */ (window).game.sandbox.player.position }));
-
-    // Walk forward (towards the dummy at z = -4) with the real keyboard.
+    // Walk up the dock (north, -z) with the real keyboard.
     await page.keyboard.down('KeyW');
-    await page.waitForFunction(() => /** @type {Game} */ (window).game.sandbox.player.position.z < -2.4, null, { timeout: 60_000 });
+    await page.waitForFunction((z) => /** @type {Game} */ (window).game.sandbox.player.position.z < z - 3, start.z, { timeout: 60_000 });
     await page.keyboard.up('KeyW');
-    const moved = await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.player.position);
-    expect(start.z - moved.z).toBeGreaterThan(3);
+    expect(errors).toEqual([]);
+  });
 
+  test('an attack lands on the training dummy', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'Game-feel lab' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.sandbox?.area.id === 'training' && /** @type {Game} */ (window).game.mode === 'play');
+    await page.keyboard.press('Tab'); // close the lab
+    await page.evaluate(() => {
+      const g = /** @type {Game} */ (window).game;
+      g.sandbox.player.body.teleport({ x: 0, y: 0, z: -2.9 });
+      g.sandbox.player.facing = Math.PI;
+    });
     // Swing until the dummy has taken damage.
     await expect(async () => {
       await page.keyboard.press('KeyJ');
@@ -36,11 +47,117 @@ test.describe('smoke', () => {
     expect(errors).toEqual([]);
   });
 
+  test('drinking a tonic with the sound on heals, and the game keeps running', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    // The click above was a gesture, so the sound can be unlocked.
+    await page.keyboard.press('Shift');
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.audio.unlocked);
+    const before = await page.evaluate(() => {
+      const g = /** @type {Game} */ (window).game;
+      g.sandbox.player.hp = 1;
+      return { tonics: g.adventure.state.itemCount('tonic'), ticks: g.loop.tickCount };
+    });
+    expect(before.tonics).toBeGreaterThan(0);
+    await page.keyboard.press('KeyR');
+    await page.waitForFunction((n) => /** @type {Game} */ (window).game.adventure.state.itemCount('tonic') === n - 1, before.tonics, { timeout: 60_000 });
+    expect(await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.player.hp)).toBeGreaterThan(1);
+    // Still stepping after the drink.
+    const ticks = await page.evaluate(() => /** @type {Game} */ (window).game.loop.tickCount);
+    await page.waitForFunction((t) => /** @type {Game} */ (window).game.loop.tickCount > t + 10, ticks);
+    expect(errors).toEqual([]);
+  });
+
+  test('talking to Elder Ina: the prompt, the dialogue box, a choice', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    await page.evaluate(() => {
+      const g = /** @type {Game} */ (window).game;
+      const ina = g.sandbox.npcs.find((/** @type {any} */ n) => n.id === 'ina');
+      g.sandbox.player.body.teleport({ x: ina.position.x, y: 0.1, z: ina.position.z + 1.5 });
+      g.sandbox.player.facing = Math.PI;
+    });
+    await expect(page.locator('.prompt')).toContainText('Elder Ina');
+    await page.keyboard.press('KeyE');
+    await expect(page.locator('.dialogue')).toBeVisible();
+    await expect(page.locator('.dialogue-speaker')).toHaveText('Elder Ina');
+    // Continue until the choices show, then pick "Can I help?" and "I'll go."
+    for (const choice of ['Can I help?', "I'll go."]) {
+      await expect(async () => {
+        if (!(await page.locator('.dialogue-choices li', { hasText: choice }).isVisible())) await page.keyboard.press('Enter');
+        await expect(page.locator('.dialogue-choices li', { hasText: choice })).toBeVisible({ timeout: 500 });
+      }).toPass({ timeout: 30_000 });
+      await page.locator('.dialogue-choices li', { hasText: choice }).click();
+    }
+    await expect(async () => {
+      await page.keyboard.press('Enter');
+      expect(await page.evaluate(() => /** @type {Game} */ (window).game.mode)).toBe('play');
+    }).toPass({ timeout: 30_000 });
+    expect(await page.evaluate(() => /** @type {Game} */ (window).game.adventure.state.flags.has('gate_open'))).toBe(true);
+    await expect(page.locator('.toast').first()).toBeAttached(); // "Quest updated"
+    expect(errors).toEqual([]);
+  });
+
+  test('saves survive a reload: Continue picks up the game', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    await page.evaluate(() => {
+      const g = /** @type {Game} */ (window).game;
+      g.adventure.state.flags.add('ina_met');
+      g.adventure.state.shells = 77;
+    });
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Save and quit' }).click();
+    await expect(page.locator('.menu-title')).toBeVisible();
+    await page.reload();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game?.mode === 'title', null, { timeout: 90_000 });
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    const state = await page.evaluate(() => {
+      const s = /** @type {Game} */ (window).game.adventure.state;
+      return { shells: s.shells, met: s.flags.has('ina_met'), area: s.area };
+    });
+    expect(state).toEqual({ shells: 77, met: true, area: 'village' });
+    expect(errors).toEqual([]);
+  });
+
+  test('travelling between areas does not leak GPU memory', async ({ page }) => {
+    const errors = collectErrors(page);
+    await openGame(page);
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
+    const counts = await page.evaluate(async () => {
+      const g = /** @type {Game} */ (window).game;
+      g.adventure.state.flags.add('gate_open');
+      const out = [];
+      for (let i = 0; i < 4; i++) {
+        await g.travel('halls', 'start');
+        await g.travel('village', 'gate');
+        // Read once the next area has been preloaded, so every reading is the same moment.
+        await g.neighboursReady;
+        await new Promise((r) => setTimeout(r, 500));
+        out.push(g.view.renderer.info.memory.textures);
+      }
+      return out;
+    });
+    // No growth from trip to trip. (The leak this guards against added about
+    // 150 textures per round trip. Each reading waits for the neighbouring
+    // area's idle-time preload, which otherwise moved the count by ~30.)
+    expect(Math.max(...counts.slice(1)) - Math.min(...counts.slice(1)), JSON.stringify(counts)).toBeLessThan(30);
+    expect(counts[3] - counts[1], JSON.stringify(counts)).toBeLessThan(30);
+    expect(errors).toEqual([]);
+  });
+
   test('the lab opens, and a toggle takes effect in the fight', async ({ page }) => {
     const errors = collectErrors(page);
     await openGame(page);
-    await page.getByRole('button', { name: 'Play' }).click();
-    await page.keyboard.press('Tab');
+    await page.getByRole('button', { name: 'Game-feel lab' }).click();
     const lab = page.locator('.lab');
     await expect(lab).toBeVisible();
 
@@ -97,9 +214,13 @@ test.describe('smoke', () => {
   test('pause menu, settings and controls open and close', async ({ page }) => {
     const errors = collectErrors(page);
     await openGame(page);
-    await page.getByRole('button', { name: 'Play' }).click();
+    await page.getByRole('button', { name: 'New game' }).click();
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
     await page.keyboard.press('Escape');
     await expect(page.locator('.menu-pause')).toBeVisible();
+    await page.getByRole('button', { name: 'Quests' }).click();
+    await expect(page.locator('.quest-log')).toContainText('The Cold Hearth');
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Controls' }).click();
     await expect(page.locator('.controls-table')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -119,7 +240,8 @@ test.describe('smoke', () => {
       const page = await context.newPage();
       const errors = collectErrors(page);
       await openGame(page);
-      await page.getByRole('button', { name: 'Play' }).click();
+      await page.getByRole('button', { name: 'New game' }).click();
+      await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
       await page.mouse.move(640, 360);
       await page.mouse.down();
       // Wait on game state: software rendering runs at a few frames a second.
@@ -142,7 +264,8 @@ test.describe('smoke', () => {
     const context = await browser.newContext({ viewport: { width: 915, height: 412 }, hasTouch: true, isMobile: true });
     const page = await context.newPage();
     await openGame(page);
-    await page.getByRole('button', { name: 'Play' }).tap(); // a finger, not the mouse
+    await page.getByRole('button', { name: 'New game' }).tap(); // a finger, not the mouse
+    await page.waitForFunction(() => /** @type {Game} */ (window).game.mode === 'play');
     await expect(page.locator('.touch-controls')).toBeVisible();
     const start = await page.evaluate(() => /** @type {Game} */ (window).game.sandbox.player.position.z);
     // Drag on the lower left of the game (the stick) with a touch pointer.

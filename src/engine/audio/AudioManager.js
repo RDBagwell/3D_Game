@@ -134,9 +134,10 @@ export class AudioManager {
 
   /**
    * @param {string} name
-   * @param {{ position?: { x: number, y: number, z: number }, volume?: number }} [options]
+   * @param {{ position?: { x: number, y: number, z: number } | null, volume?: number } | null} [options]
    */
-  play(name, options = {}) {
+  play(name, options) {
+    options ??= {};
     const def = this.sounds.get(name);
     if (!def) return;
     if (def.caption) this.onCaption(def.caption);

@@ -4,6 +4,7 @@
  *   const music = new MusicManager(audio, { baseUrl, tracks: ['title', 'sandbox'] });
  *   music.play('sandbox');          // fades the current track out and this one in
  *   music.play(null);               // fade to silence
+ *   music.play('victory', { loop: false, then: 'village' });  // once, then back
  *
  * A track is `music/<name>.ogg`. Only names listed in `tracks` are ever
  * requested (so a game with no music yet makes no failing requests), and a
@@ -57,12 +58,16 @@ export class MusicManager {
   /**
    * Cross-fade to a track, or to silence with null.
    * @param {string | null} name
+   * @param {{ loop?: boolean, then?: string | null }} [options]
+   *        loop false: play once; then: the track to cross-fade to when it ends
+   *        (or right away if this one is missing)
    */
-  async play(name) {
+  async play(name, { loop = true, then } = {}) {
     if (name === this.wanted) return;
     this.wanted = name;
     const buffer = name ? await this.load(name) : null;
     if (this.wanted !== name) return; // something else was asked for while loading
+    if (!buffer && then !== undefined) return void this.play(then);
     const ctx = this.audio.context;
     if (!ctx || !this.audio.musicGain) return;
     const t = ctx.currentTime;
@@ -78,7 +83,12 @@ export class MusicManager {
     if (!buffer || !name) return;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.loop = true;
+    source.loop = loop;
+    if (!loop && then !== undefined) {
+      source.onended = () => {
+        if (this.current?.source === source) void this.play(then);
+      };
+    }
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, t);
     gain.gain.linearRampToValueAtTime(1, t + this.fade);

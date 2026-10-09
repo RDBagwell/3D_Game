@@ -73,6 +73,15 @@ export class Physics {
   }
 
   /**
+   * Switch a static collider on or off (a door opening, a gate rising).
+   * @param {import('@dimforge/rapier3d-compat').Collider} collider
+   * @param {boolean} enabled
+   */
+  setColliderEnabled(collider, enabled) {
+    collider.setEnabled(enabled);
+  }
+
+  /**
    * A character moved by the kinematic character controller.
    * @param {ConstructorParameters<typeof CharacterBody>[1]} options
    */

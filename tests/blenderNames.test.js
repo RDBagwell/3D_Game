@@ -27,6 +27,12 @@ describe('Blender naming convention', () => {
     expect(parseNodeName('spawn_enemy_grunt_a.001')).toEqual({ kind: 'spawn', role: 'enemy', enemyType: 'grunt', name: 'a' });
     expect(parseNodeName('spawn_enemy_dummy')).toEqual({ kind: 'spawn', role: 'enemy', enemyType: 'dummy', name: 'dummy' });
     expect(parseNodeName('trigger_arena_gate')).toEqual({ kind: 'trigger', id: 'arena' });
+    expect(parseNodeName('exit_halls')).toEqual({ kind: 'exit', area: 'halls', spawn: 'start' });
+    expect(parseNodeName('exit_village_gate.002')).toEqual({ kind: 'exit', area: 'village', spawn: 'gate' });
+    expect(parseNodeName('npc_ina')).toEqual({ kind: 'npc', id: 'ina' });
+    expect(parseNodeName('object_vault_chest')).toEqual({ kind: 'object', id: 'vault_chest' });
+    expect(parseNodeName('marker_ring_a')).toEqual({ kind: 'marker', name: 'ring_a' });
+    expect(parseNodeName('npc_')).toEqual({ kind: 'visual' });
     expect(parseNodeName('rock_cast_receive.001')).toEqual({ kind: 'visual' });
     expect(parseNodeName('area_')).toEqual({ kind: 'visual' });
     expect(parseNodeName('')).toEqual({ kind: 'visual' });

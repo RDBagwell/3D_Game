@@ -20,8 +20,28 @@ import { DEFAULT_BINDINGS, REBINDABLE, STORAGE } from './config.js';
  * @property {number} sfxVolume     0..10
  * @property {'auto' | 'on' | 'off'} touch
  * @property {boolean} hints  show control hints on the HUD
+ * @property {'slow' | 'normal' | 'fast' | 'instant'} textSpeed  how fast dialogue types out
+ * @property {'low' | 'medium' | 'high'} quality  graphics: shadows, resolution, draw distance, particles
+ * @property {number} damageTaken  0.5, 0.75 or 1: how much of an enemy's damage you take (assist)
+ * @property {boolean} autoLock  lock on to an enemy by itself when one comes for you (assist)
+ * @property {boolean} slowEnemies  longer wind-ups, slower enemies (assist)
+ * @property {'hold' | 'toggle'} shieldMode  hold the button to keep the shield up, or press to raise / lower it
+ * @property {'toggle' | 'hold'} lockMode  press to lock on / off, or lock only while the button is held
  * @property {Record<string, string[]>} keys  action -> keyboard codes, only actions the player changed
  */
+
+/**
+ * A sensible starting quality for this device: phones and tablets start on
+ * Low, small or old computers on Medium, the rest on High.
+ * @returns {'low' | 'medium' | 'high'}
+ */
+export function defaultQuality() {
+  if (typeof matchMedia === 'undefined') return 'high';
+  if (matchMedia('(pointer: coarse)').matches) return 'low';
+  const nav = /** @type {any} */ (globalThis.navigator ?? {});
+  if ((nav.deviceMemory && nav.deviceMemory <= 4) || (nav.hardwareConcurrency && nav.hardwareConcurrency <= 4)) return 'medium';
+  return 'high';
+}
 
 /** @returns {Settings} */
 export function defaultSettings() {
@@ -37,6 +57,13 @@ export function defaultSettings() {
     sfxVolume: 8,
     touch: 'auto',
     hints: true,
+    textSpeed: 'normal',
+    quality: defaultQuality(),
+    damageTaken: 1,
+    autoLock: false,
+    slowEnemies: false,
+    shieldMode: 'hold',
+    lockMode: 'toggle',
     keys: {},
   };
 }
@@ -56,6 +83,14 @@ export function sanitizeSettings(raw) {
     if (Number.isInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 10) s[key] = raw[key];
   }
   if (['auto', 'on', 'off'].includes(raw.touch)) s.touch = raw.touch;
+  if (['slow', 'normal', 'fast', 'instant'].includes(raw.textSpeed)) s.textSpeed = raw.textSpeed;
+  if (['low', 'medium', 'high'].includes(raw.quality)) s.quality = raw.quality;
+  if ([0.5, 0.75, 1].includes(raw.damageTaken)) s.damageTaken = raw.damageTaken;
+  for (const key of /** @type {const} */ (['autoLock', 'slowEnemies'])) {
+    if (typeof raw[key] === 'boolean') s[key] = raw[key];
+  }
+  if (['hold', 'toggle'].includes(raw.shieldMode)) s.shieldMode = raw.shieldMode;
+  if (['hold', 'toggle'].includes(raw.lockMode)) s.lockMode = raw.lockMode;
   if (raw.keys && typeof raw.keys === 'object') {
     for (const { action } of REBINDABLE) {
       const codes = raw.keys[action];

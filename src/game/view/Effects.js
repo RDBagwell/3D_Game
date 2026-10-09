@@ -10,6 +10,8 @@ import { BufferGeometry, BufferAttribute, Points, PointsMaterial, AdditiveBlendi
 export class Particles {
   /** @param {number} [max=600] */
   constructor(max = 600) {
+    /** Fraction of particles drawn (graphics quality). */
+    this.scale = 1;
     this.max = max;
     this.positions = new Float32Array(max * 3);
     this.colors = new Float32Array(max * 3);
@@ -34,6 +36,7 @@ export class Particles {
    * @param {{ speed?: number, life?: number, gravity?: number, color?: [number, number, number], spread?: number }} [o]
    */
   burst(at, direction, count, { speed = 6, life = 0.35, gravity = 14, color = [1, 0.85, 0.45], spread = 0.9 } = {}) {
+    count = Math.max(1, Math.round(count * this.scale));
     for (let n = 0; n < count; n++) {
       const i = this.next;
       this.next = (this.next + 1) % this.max;
@@ -105,6 +108,12 @@ export class Floaters {
     this.layer.append(el);
     this.items.push({ el, pos: new Vector3(at.x + (Math.random() - 0.5) * 0.3, at.y, at.z), age: 0, life: 0.9 });
     if (this.items.length > 30) this.items.shift()?.el.remove();
+  }
+
+  /** Remove every floating text (changing area). */
+  clear() {
+    for (const item of this.items) item.el.remove();
+    this.items = [];
   }
 
   /**

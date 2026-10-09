@@ -22,6 +22,10 @@ box colliders. The parser is `src/engine/level/levelNames.js`, and
 | `spawn_player_<name>` | Another place the hero can arrive (doors, docks; session 2) | No | `spawn_player_dock` |
 | `spawn_enemy_<type>` | An enemy of that type, facing the way the object faces | No | `spawn_enemy_grunt_a`, `spawn_enemy_dummy` |
 | `trigger_<id>` | An invisible box; walking in or out fires the event `<id>` | No | `trigger_arena_gate` (id `arena`) |
+| `exit_<area>_<spawn>` | An invisible box; walking in takes you to `<area>`, arriving at its `spawn_player_<spawn>` (no spawn: `start`) | No | `exit_halls`, `exit_village_gate` |
+| `npc_<id>` | Where a villager stands and faces (an Empty). Who they are is data: `src/game/data/npcs.js` | No | `npc_ina` |
+| `object_<id>` | Where an interactive object stands: gate, door, chest, switch, hearthstone (an Empty). What it does is data: `src/game/data/objects.js` | No (the game draws it) | `object_vault_chest` |
+| `marker_<name>` | A named point the game uses: where an encounter's enemies appear, where the boss calls for help | No | `marker_ring_a` |
 | anything else | Scenery: drawn, but nothing collides with it | Yes | `house_roof`, `tree.004` |
 
 Rules:
@@ -40,6 +44,11 @@ Rules:
 - **Enemy types:** `grunt` and `dummy` today (`src/game/data/actors.js`).
 - **Trigger ids** are the first word after `trigger_`: `trigger_arena_gate`
   and `trigger_arena_back` both fire `arena`.
+- **Exits** name an area id (`village`, `halls`; see
+  `src/game/data/areas/index.js`) and a spawn in it. `npm test` fails if an
+  exit leads to an area or spawn that doesn't exist.
+- **NPCs and objects** are only placed in Blender; their ids must exist in
+  `npcs.js` / `objects.js`, which `npm test` checks too.
 
 ## The usual pattern: a visible mesh and a collider twin
 
@@ -114,3 +123,18 @@ but with exactly these names, and loaded through the same
 `collider_box_step_*`, `area_stone_*` / `area_wood_*` / `area_dirt_*`,
 `spawn_player`, `spawn_enemy_dummy`, three `spawn_enemy_grunt_*` and
 `trigger_arena_gate`.
+
+## The village and the Hearth Halls
+
+The two areas of the adventure are data (`src/game/data/areas/village.js`
+and `halls.js`), turned into a scene graph with these same names by
+`src/game/world/buildArea.js` and then read by `Level.fromScene()`, exactly
+like an export. To rebuild one in Blender instead:
+
+1. Model it with the names above (KayKit's packs import into Blender as
+   glTF; the dungeon pieces are 4 units, used at 0.75 scale, so 3 m).
+2. Keep the ids the data uses: `spawn_player`, `spawn_player_gate`,
+   `npc_ina`, `object_hearth_gate`, `exit_halls`... (`npm test` lists any that
+   don't match).
+3. Export to `public/levels/<area>.glb` and load it as the area's `levelRoot`
+   (`Sandbox.create({ levelRoot })`) in place of `buildArea()`.

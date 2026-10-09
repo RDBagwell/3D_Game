@@ -1,21 +1,29 @@
 import {
   WebGLRenderer, Scene, PerspectiveCamera, HemisphereLight, DirectionalLight, Fog, CanvasTexture, SRGBColorSpace,
-  ACESFilmicToneMapping, PCFShadowMap, RepeatWrapping, MeshStandardMaterial, Vector3, Mesh,
+  ACESFilmicToneMapping, PCFShadowMap, RepeatWrapping, MeshStandardMaterial, Vector3, Mesh, PointLight, Color,
+  SphereGeometry, MeshBasicMaterial, Sprite, SpriteMaterial, AdditiveBlending,
 } from 'three';
 import { Gizmos, CameraShake } from '../../engine/index.js';
 import { CharacterView } from './CharacterView.js';
+import { ObjectView } from './ObjectView.js';
 import { Particles, Floaters } from './Effects.js';
-import { makeKnight, makeGrunt, makeDummy, makeProp } from './models.js';
-import { PROPS } from '../scenes/trainingGrounds.js';
+import { makeKnight, makeFoe, makeDummy, makeNpc } from './models.js';
+import { NPCS } from '../data/npcs.js';
+import { QUALITY } from '../data/quality.js';
 import { SURFACES } from '../data/sounds.js';
 import { hitSpheresAt } from '../combat/hitboxes.js';
 import { Sandbox } from '../sim/Sandbox.js';
 
 /**
- * Everything the player sees and hears of the sandbox: the renderer, lights
- * and sky, the level's meshes, a CharacterView per actor, particles, floating
- * text, the debug gizmos, and the feedback that turns simulation events into
- * flashes, sparks, shake, sound and rumble.
+ * Everything the player sees and hears of the current area: the renderer,
+ * lights and sky, the level's meshes, a CharacterView per actor and villager,
+ * an ObjectView per gate, chest or switch, particles, floating text, the
+ * debug gizmos, and the feedback that turns simulation events into flashes,
+ * sparks, shake, sound and rumble.
+ *
+ * The renderer lives as long as the game; each area gets a fresh scene
+ * (setSandbox), built from the area's look: daylight with shadows outside,
+ * dark stone and torchlight in the Hearth Halls.
  *
  * Every feedback technique checks its game-feel switch at the moment it
  * fires, so changing a setting mid-fight takes effect on the next hit and can
@@ -26,7 +34,6 @@ export class WorldView {
    * @param {object} o
    * @param {HTMLCanvasElement} o.canvas
    * @param {HTMLElement} o.overlay  container for DOM overlays (floating text)
-   * @param {Sandbox} o.sandbox
    * @param {Record<string, any>} o.models  loaded glTFs (null when missing)
    * @param {import('../../engine/index.js').AudioManager} o.audio
    * @param {import('../../engine/index.js').Input} o.input
@@ -34,8 +41,9 @@ export class WorldView {
    * @param {() => import('../feel/feelSettings.js').ShowValues} o.show
    * @param {() => { reducedMotion: boolean }} o.prefs
    */
-  constructor({ canvas, overlay, sandbox, models, audio, input, feel, show, prefs }) {
-    this.sandbox = sandbox;
+  constructor({ canvas, overlay, models, audio, input, feel, show, prefs }) {
+    /** @type {Sandbox} */
+    this.sandbox = /** @type {any} */ (null);
     this.audio = audio;
     this.input = input;
     this.feel = feel;
@@ -52,51 +60,218 @@ export class WorldView {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFShadowMap;
 
-    this.scene = new Scene();
-    this.scene.background = skyTexture();
-    this.scene.fog = new Fog(0xbfd9f2, 38, 95);
-    this.camera = new PerspectiveCamera(60, 1, 0.1, 200);
+    this.mobile = mobile;
+    this.camera = new PerspectiveCamera(60, 1, 0.1, 220);
     this.shake = new CameraShake();
-
-    const hemi = new HemisphereLight(0xdcefff, 0x8a7a5c, 1.4);
-    this.sun = new DirectionalLight(0xfff1d6, 2.4);
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
-    const sc = this.sun.shadow.camera;
-    sc.left = sc.bottom = -16;
-    sc.right = sc.top = 16;
-    sc.near = 1;
-    sc.far = 60;
-    this.sun.shadow.bias = -0.0005;
-    this.sun.shadow.normalBias = 0.02;
-    this.scene.add(hemi, this.sun, this.sun.target);
-
-    this.scene.add(sandbox.level.root);
-    texture(sandbox.level.root);
-
-    for (const prop of PROPS) {
-      const model = makeProp(models[prop.kind], prop.kind === 'barrel' ? 0x3d7bd9 : 0xc9a46a);
-      model.position.set(prop.position[0], prop.position[1], prop.position[2]);
-      model.rotation.y = prop.yaw;
-      this.scene.add(model);
-    }
-
-    /** @type {Map<string, CharacterView>} */
-    this.views = new Map();
-    this.addView(new CharacterView(makeKnight(models.knight), sandbox.player, 'player'));
-    for (const g of sandbox.grunts) this.addView(new CharacterView(makeGrunt(models.grunt, models.gruntBlade, models.gruntShield), g, 'grunt'));
-    for (const d of sandbox.dummies) this.addView(new CharacterView(makeDummy(models.dummy), d, 'dummy'));
-
+    this.scene = new Scene();
     this.particles = new Particles();
-    this.scene.add(this.particles.object);
     this.floaters = new Floaters(overlay);
     this.gizmos = new Gizmos();
-    this.scene.add(this.gizmos.object);
-
+    /** @type {Map<string, CharacterView>} */
+    this.views = new Map();
+    /** @type {ObjectView[]} */
+    this.objectViews = [];
+    /** Torch lights, flickering. @type {PointLight[]} */
+    this.torches = [];
+    /** Projectiles in flight: a glowing ball and a halo each. @type {Map<string, import('three').Group | Mesh>} */
+    this.bolts = new Map();
+    this.boltGeometry = new SphereGeometry(1, 14, 10);
+    this.boltMaterial = new MeshBasicMaterial({ color: 0xffb347 });
+    this.haloMaterial = new SpriteMaterial({ map: glowTexture(), color: 0xff7a2a, blending: AdditiveBlending, depthWrite: false, transparent: true });
+    this.time = 0;
+    /** The shadow-casting sun (daylight areas only). @type {DirectionalLight | null} */
+    this.sun = null;
+    /** Graphics quality (Settings → Graphics). @type {typeof QUALITY.high} */
+    this.quality = QUALITY.high;
+    /** The current checkpoint's hearthstone (it glows). @type {() => string | null} */
+    this.checkpointObject = () => null;
     this.width = 1;
     this.height = 1;
     this.lookAt = new Vector3();
+  }
+
+  /**
+   * Show an area: a new scene with the level, the look of the area, every
+   * character and object, and feedback wired to the new simulation.
+   * @param {Sandbox} sandbox
+   */
+  setSandbox(sandbox) {
+    this.disposeScene();
+    this.sandbox = sandbox;
+    const models = this.models;
+    const scene = new Scene();
+    this.scene = scene;
+    this.applyLook(sandbox.area);
+
+    scene.add(sandbox.level.root);
+    // The training grounds keep their 1 m grid: it makes speeds readable in the lab.
+    if (sandbox.area.id === 'training') texture(sandbox.level.root);
+
+    this.views = new Map();
+    this.addView(new CharacterView(makeKnight(models.knight), sandbox.player, 'player'));
+    for (const foe of sandbox.foes) this.addFoeView(foe);
+    for (const d of sandbox.dummies) this.addView(new CharacterView(makeDummy(models.dummy), d, 'dummy'));
+    for (const npc of sandbox.npcs) {
+      const def = NPCS[/** @type {keyof typeof NPCS} */ (npc.id)];
+      this.addView(new CharacterView(makeNpc(models[def.model], def.hide), npc, 'npc'));
+    }
+    this.objectViews = sandbox.objects.map((o) => new ObjectView(o, models));
+    sandbox.events.on('spawned', (d) => this.addFoeView(d.foe));
+    for (const v of this.objectViews) scene.add(v.root);
+
+    scene.add(this.particles.object);
+    scene.add(this.gizmos.object);
+    this.bolts = new Map();
+    this.applyQualityToScene(false);
     this.listen();
+  }
+
+  /** @param {any} foe */
+  addFoeView(foe) {
+    this.addView(new CharacterView(makeFoe(foe.kind, this.models), foe, 'foe'));
+  }
+
+  /**
+   * Lights, sky and fog for an area.
+   * @param {import('../world/buildArea.js').AreaDef} area
+   */
+  applyLook(area) {
+    const scene = this.scene;
+    this.torches = [];
+    if (area.look === 'halls') {
+      scene.background = new Color(0x15121d);
+      scene.fog = new Fog(0x15121d, 11, 36);
+      scene.add(new HemisphereLight(0xb8aee0, 0x4a3a2c, 2.2));
+      const key = new DirectionalLight(0xffd2a0, 1.2);
+      key.position.set(4, 10, 3);
+      scene.add(key);
+      this.sun = null;
+      for (const l of area.lights ?? []) {
+        const light = new PointLight(l.color ?? 0xffa060, (l.intensity ?? 1) * 60, l.distance ?? 20, 1.4);
+        light.position.set(...l.at);
+        light.userData.base = light.intensity;
+        scene.add(light);
+        this.torches.push(light);
+      }
+    } else {
+      scene.background = skyTexture();
+      scene.fog = new Fog(0xbfd9f2, 55, 170);
+      const hemi = new HemisphereLight(0xdcefff, 0x8a7a5c, 1.4);
+      const sun = new DirectionalLight(0xfff1d6, 2.4);
+      sun.castShadow = this.quality.shadows > 0;
+      sun.shadow.mapSize.set(this.quality.shadows || 1024, this.quality.shadows || 1024);
+      const sc = sun.shadow.camera;
+      sc.left = sc.bottom = -18;
+      sc.right = sc.top = 18;
+      sc.near = 1;
+      sc.far = 70;
+      sun.shadow.bias = -0.0005;
+      sun.shadow.normalBias = 0.02;
+      scene.add(hemi, sun, sun.target);
+      this.sun = sun;
+    }
+  }
+
+  /**
+   * Apply a graphics quality preset (data/quality.js). Safe mid-game.
+   * @param {keyof typeof QUALITY} name
+   */
+  setQuality(name) {
+    const q = QUALITY[name] ?? QUALITY.high;
+    const shadowsChanged = (q.shadows > 0) !== (this.quality.shadows > 0) || q.shadows !== this.quality.shadows;
+    this.quality = q;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, q.pixelRatio));
+    this.renderer.shadowMap.enabled = q.shadows > 0;
+    this.camera.far = q.far;
+    this.camera.updateProjectionMatrix();
+    this.particles.scale = q.particles;
+    if (this.sandbox) this.applyQualityToScene(shadowsChanged);
+    if (this.width > 1) this.resize(this.width, this.height);
+  }
+
+  /**
+   * @private
+   * @param {boolean} shadowsChanged
+   */
+  applyQualityToScene(shadowsChanged) {
+    const q = this.quality;
+    if (this.sun) {
+      this.sun.castShadow = q.shadows > 0;
+      if (q.shadows > 0 && this.sun.shadow.mapSize.x !== q.shadows) {
+        this.sun.shadow.mapSize.set(q.shadows, q.shadows);
+        this.sun.shadow.map?.dispose();
+        this.sun.shadow.map = null;
+      }
+    }
+    const fog = /** @type {Fog | null} */ (this.scene.fog);
+    const halls = this.sandbox.area.look === 'halls';
+    if (fog && !halls) {
+      fog.near = q.fog[0];
+      fog.far = q.fog[1];
+    }
+    // Indoors nothing past the fog can be seen: don't draw it.
+    this.camera.far = halls ? Math.min(q.far, 38) : q.far;
+    this.camera.updateProjectionMatrix();
+    this.torches.forEach((t, i) => (t.visible = i < q.lights));
+    if (shadowsChanged) {
+      // Materials compile differently with and without shadows.
+      this.scene.traverse((o) => {
+        const m = /** @type {any} */ (o).material;
+        if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true));
+        else if (m) m.needsUpdate = true;
+      });
+    }
+  }
+
+  /**
+   * Let go of the old area's scene: its skeletons (each character clone has
+   * its own bone texture on the GPU) and the geometry built for it. Models'
+   * shared geometry, materials and textures stay loaded for the next area.
+   */
+  disposeScene() {
+    for (const view of this.views.values()) {
+      view.ring?.geometry.dispose();
+      /** @type {any} */ (view.ring?.material)?.dispose();
+    }
+    for (const v of this.objectViews) v.dispose();
+    this.scene.traverse((o) => {
+      const mesh = /** @type {any} */ (o);
+      if (mesh.isSkinnedMesh) mesh.skeleton?.dispose();
+      if (mesh.isLight && mesh.shadow?.map) mesh.shadow.map.dispose();
+      if (mesh.isMesh && mesh.userData.area) mesh.geometry.dispose();
+    });
+    this.scene.clear();
+    this.floaters.clear();
+  }
+
+  /**
+   * Wisps rising from the lit Hearth (the ending).
+   * @param {{ x: number, y: number, z: number }} at
+   * @param {number} dt
+   */
+  wisps(at, dt) {
+    const n = Math.random() < dt * 30 ? 1 : 0;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 1.2;
+      this.particles.burst({ x: at.x + Math.cos(a) * r, y: at.y + 1, z: at.z + Math.sin(a) * r }, { x: 0, y: 1, z: 0 }, 2, { color: [1, 0.85, 0.5], speed: 2.5, life: 2.8, gravity: -1.2, spread: 0.5 });
+    }
+  }
+
+  /**
+   * Compile an area's shaders ahead of time (preloading the next area), so
+   * stepping through its exit doesn't stall on the first frame.
+   * @param {import('three').Object3D} root
+   */
+  async precompile(root) {
+    const scene = new Scene();
+    scene.add(root);
+    try {
+      await this.renderer.compileAsync(scene, this.camera);
+    } catch {
+      // Not supported everywhere; the area just compiles on its first frame instead.
+    }
+    scene.remove(root);
   }
 
   /** @param {CharacterView} view */
@@ -124,6 +299,51 @@ export class WorldView {
     const ev = this.sandbox.events;
     const f = () => this.feel();
     const play = (/** @type {string} */ name, /** @type {any} */ pos, volume = 1) => this.audio.play(name, { position: pos, volume });
+
+    ev.on('shoot', (d) => {
+      const p = d.projectile;
+      const ball = new Mesh(this.boltGeometry, this.boltMaterial);
+      ball.scale.setScalar(p.def.radius * 0.7);
+      const halo = new Sprite(this.haloMaterial);
+      halo.scale.setScalar(p.def.radius * 4.5);
+      ball.add(halo);
+      halo.scale.divideScalar(p.def.radius * 0.7);
+      ball.position.set(p.position.x, p.position.y, p.position.z);
+      this.scene.add(ball);
+      this.bolts.set(p.id, ball);
+      play('cast', p.position);
+    });
+    ev.on('projectileEnd', (d) => {
+      const ball = this.bolts.get(d.projectile.id);
+      if (ball) {
+        this.scene.remove(ball);
+        this.bolts.delete(d.projectile.id);
+      }
+      if (f().particles) this.particles.burst(d.point, { x: 0, y: 1, z: 0 }, d.reason === 'fizzle' ? 6 : 14, { color: [1, 0.55, 0.2], speed: 4 });
+      if (d.reason === 'cut') {
+        play('deflect', d.point);
+        this.floaters.add('Cut!', { ...d.point, y: d.point.y + 0.4 }, 'note good');
+      } else if (d.reason === 'wall') {
+        play('fizzle', d.point, 0.6);
+      }
+    });
+    ev.on('roar', (d) => {
+      play('roar', d.foe.position);
+      this.shake.addTrauma(0.7);
+      if (f().rumble) this.input.rumble(0.8, 0.8, 600);
+    });
+    ev.on('opening', (d) => {
+      play('opening', d.foe.position);
+      this.floaters.add('Opening!', { x: d.foe.position.x, y: d.foe.position.y + d.foe.height + 0.3, z: d.foe.position.z }, 'note good big');
+    });
+    ev.on('summoned', (d) => {
+      if (f().particles) this.particles.burst({ ...d.foe.position, y: 0.4 }, { x: 0, y: 1, z: 0 }, 20, { color: [1, 0.45, 0.15], speed: 5 });
+    });
+    ev.on('objectHit', (d) => {
+      play('switch_hit', d.point);
+      if (f().particles) this.particles.burst(d.point, { x: 0, y: 1, z: 0 }, 22, { color: [1, 0.7, 0.3], speed: 6 });
+      this.shake.addTrauma(0.2);
+    });
 
     ev.on('swing', (d) => {
       if (!f().hitSounds) return;
@@ -153,6 +373,7 @@ export class WorldView {
       if (this.show().damage && d.target.kind === 'dummy') this.floaters.add(String(d.damage), d.point, d.attack.hitstop >= 6 ? 'big' : '');
       else if (d.target.team === 'player' && this.show().damage) this.floaters.add(`-${d.damage}`, d.point, 'hurt');
       if (d.counter) this.floaters.add('Counter hit', { ...d.point, y: d.point.y + 0.5 }, 'note');
+      if (d.weak) this.floaters.add(`Weak point! ${d.damage}`, { ...d.point, y: d.point.y + 0.5 }, 'note good');
     });
     ev.on('block', (d) => {
       if (f().hitSounds) play('block', d.point);
@@ -173,9 +394,11 @@ export class WorldView {
       play(`step_${surface}`, d.position, d.who?.team === 'player' ? 1 : 0.7);
     });
     ev.on('windup', (d) => {
-      if (f().telegraph) play('windup', d.grunt.position);
+      if (!f().telegraph) return;
+      const name = d.boss ? 'boss_windup' : d.cast ? 'cast_windup' : d.foe.kind === 'mite' ? 'mite_windup' : 'windup';
+      play(name, d.foe.position);
     });
-    ev.on('noticed', (d) => play('noticed', d.grunt.position));
+    ev.on('noticed', (d) => play(d.boss ? 'boss_awake' : d.foe.kind === 'mite' ? 'mite_noticed' : 'noticed', d.foe.position));
     ev.on('lockOn', () => play('lock_on', null));
     ev.on('lockOff', () => play('lock_off', null));
     ev.on('shieldUp', (d) => {
@@ -201,11 +424,28 @@ export class WorldView {
       view.update(alpha, sb.prev.get(view.actor.id), dt, frozen);
     }
     this.particles.update(dt);
+    this.time += dt;
+    for (const p of sb.projectiles) {
+      const ball = this.bolts.get(p.id);
+      if (!ball) continue;
+      ball.position.set(p.prev.x + (p.position.x - p.prev.x) * alpha, p.position.y + Math.sin(this.time * 18) * 0.03, p.prev.z + (p.position.z - p.prev.z) * alpha);
+      if (feel.particles && Math.random() < 0.5) this.particles.burst(ball.position, { x: 0, y: 0.5, z: 0 }, 1, { color: [1, 0.5, 0.15], speed: 0.6, life: 0.35, gravity: -1 });
+    }
+    const checkpoint = this.checkpointObject();
+    for (const v of this.objectViews) {
+      v.update(dt, v.object.id === checkpoint);
+      if (v.opening && (v.def.type === 'gate' || v.def.type === 'door')) this.audio.play('gate', { position: v.object.position });
+    }
+    for (const [i, t] of this.torches.entries()) {
+      t.intensity = t.userData.base * (1 + Math.sin(this.time * 9 + i * 1.7) * 0.05 + Math.sin(this.time * 23 + i) * 0.04);
+    }
 
     // Camera: interpolated simulated camera + shake (visual only).
     this.shake.scale = Number(feel.shake);
     this.shake.reducedMotion = prefs.reducedMotion;
     sb.camera.interpolate(alpha, this.camera.position, this.lookAt);
+    // Squeezed up against the hero (a wall behind): fade them, so they don't fill the screen.
+    this.views.get('player')?.setOpacity(Math.min(1, Math.max(0.2, (sb.camera.clearance - 0.45) / 0.9)));
     const { offset, roll } = this.shake.sample(dt);
     this.camera.position.add(offset);
     this.camera.lookAt(this.lookAt.x + offset.x * 0.5, this.lookAt.y + offset.y * 0.5, this.lookAt.z + offset.z * 0.5);
@@ -213,8 +453,10 @@ export class WorldView {
 
     // The sun's shadow box follows the player.
     const p = this.views.get('player')?.root.position ?? new Vector3();
-    this.sun.position.set(p.x + 8, p.y + 18, p.z + 6);
-    this.sun.target.position.set(p.x, p.y, p.z);
+    if (this.sun) {
+      this.sun.position.set(p.x + 8, p.y + 18, p.z + 6);
+      this.sun.target.position.set(p.x, p.y, p.z);
+    }
 
     const forward = new Vector3();
     this.camera.getWorldDirection(forward);
@@ -240,12 +482,13 @@ export class WorldView {
         const color = a.isInvulnerable() ? 0x8a8a8a : a.team === 'player' ? 0x33e0ff : 0x4fa8ff;
         g.capsule({ x: base.x, y: base.y + a.radius, z: base.z }, { x: base.x, y: base.y + a.height - a.radius, z: base.z }, a.radius, color);
       }
-      const swingers = [sb.player, ...sb.grunts];
+      const swingers = [sb.player, ...sb.foes];
       for (const s of swingers) {
         if (!Sandbox.isActive(s)) continue;
         const frame = s === sb.player ? sb.player.attackFrameNow : /** @type {any} */ (s).brain.frameNow;
         for (const sphere of hitSpheresAt(s.attack, frame, s.position, s.facing)) g.sphere(sphere, sphere.r, 0xff3355);
       }
+      for (const p of sb.projectiles) g.sphere(p.position, p.def.radius, 0xff3355);
     }
     if (show.camera) {
       const info = sb.camera.probeInfo;
@@ -268,8 +511,37 @@ export class WorldView {
   }
 }
 
+/** Textures drawn once and shared by every area. @type {Record<string, CanvasTexture>} */
+const TEXTURES = {};
+
+/** A soft round glow, for halos. */
+function glowTexture() {
+  if (TEXTURES.glowTexture) return TEXTURES.glowTexture;
+  TEXTURES.glowTexture = makeGlowTexture();
+  return TEXTURES.glowTexture;
+}
+
+function makeGlowTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,200,120,0.6)');
+  grad.addColorStop(1, 'rgba(255,120,40,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new CanvasTexture(c);
+}
+
 /** A vertical gradient: deep blue overhead to a warm horizon. */
 function skyTexture() {
+  if (TEXTURES.skyTexture) return TEXTURES.skyTexture;
+  TEXTURES.skyTexture = makeSkyTexture();
+  return TEXTURES.skyTexture;
+}
+
+function makeSkyTexture() {
   const c = document.createElement('canvas');
   c.width = 2;
   c.height = 256;

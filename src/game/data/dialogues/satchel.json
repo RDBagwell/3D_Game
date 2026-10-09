@@ -1,0 +1,12 @@
+{
+  "$comment": "Wren's satchel, on the rocks north-east of the square (appears once Wren has asked).",
+  "speaker": "",
+  "start": "find",
+  "nodes": {
+    "find": {
+      "text": "Wedged between two rocks: a scuffed leather satchel, stuffed with notes and sketches of wisps. It smells faintly of seaweed.",
+      "effects": [{ "giveItem": "satchel" }],
+      "end": true
+    }
+  }
+}

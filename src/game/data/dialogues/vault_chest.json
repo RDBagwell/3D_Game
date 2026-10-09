@@ -1,0 +1,12 @@
+{
+  "$comment": "The gold chest in the Key Vault.",
+  "speaker": "",
+  "start": "open",
+  "nodes": {
+    "open": {
+      "text": "The lid groans open. Inside, wrapped in a scorched cloth: an iron key with a flame-shaped bit. And someone's savings.",
+      "effects": [{ "setFlag": "vault_chest_opened" }, { "giveItem": "hearth_key" }, { "giveShells": 25 }],
+      "end": true
+    }
+  }
+}

@@ -28,6 +28,7 @@ export const DEFAULT_BINDINGS = {
   shield: ['key:KeyL', 'mouse:2', 'btn:4', 'btn:6'],
   lockOn: ['key:KeyQ', 'mouse:1', 'btn:7', 'btn:11'],
   interact: ['key:KeyE', 'btn:0'],
+  useItem: ['key:KeyR', 'btn:3'],
   pause: ['key:Escape', 'key:KeyP', 'btn:9'],
   lab: ['key:Tab', 'btn:8'],
   debug: ['key:F3', 'key:Backquote'],
@@ -50,7 +51,8 @@ export const REBINDABLE = [
   { action: 'roll', label: 'Roll' },
   { action: 'shield', label: 'Shield (hold)' },
   { action: 'lockOn', label: 'Lock on / recentre camera' },
-  { action: 'interact', label: 'Interact' },
+  { action: 'interact', label: 'Talk / use' },
+  { action: 'useItem', label: 'Drink a tonic (quick slot)' },
   { action: 'pause', label: 'Pause' },
   { action: 'lab', label: 'Game-feel lab' },
 ];
