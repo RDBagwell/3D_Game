@@ -63,20 +63,24 @@ pull request with its own tests. Phases run in order; each builds on the last.
 - **Feedback:** a low-health warning, an arrow showing where a hit came
   from, and fewer, merged damage numbers.
 
-## Phase 4: enemies that fight back
+## Phase 4: enemies that fight back (done; see docs/GAME-FEEL.md)
 
-- **Wind-ups:** late in a wind-up a hit no longer interrupts it, so a
-  warning has to be respected.
+- **Wind-ups:** late in a wind-up a hit no longer interrupts it (unless it
+  breaks the enemy's poise), so a warning has to be respected. The lock-on
+  reticle shows poise.
 - **Second moves:**
-  - grunts: a two-hit combo, and a counter after blocking;
+  - grunts: a follow-up cut, and a shield shove after blocking;
   - mites: a leap;
   - adepts: a flare on the ground, and sidesteps.
 - **Movement:** enemies steer round walls and spread out around you instead
   of stacking.
-- **Senses:** they only notice you if they can see you, warn their allies,
-  and walk home when they lose you.
-- **Group attacks:** a shared limit on how many attack at once.
-- **Death:** enemies crumble to bones and spill shells you collect.
+- **Senses:** they only notice you if they can see you (hearing still
+  works), hesitate when they glimpse you from afar, call their allies, and
+  walk home when they lose you.
+- **Group attacks:** a shared budget of 3 threat per room.
+- **Death:** skeletons crumble to bones and fade; their shells fly to you.
+  (The shells are still counted the moment an enemy falls, so nothing can be
+  lost by leaving them.)
 
 ## Phase 5: the Warden, rebuilt
 

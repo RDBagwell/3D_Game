@@ -359,7 +359,7 @@ export class Adventure {
     sb.events.on('hit', (e) => {
       if (!e.killed || e.target === sb.player || e.target.kind === 'dummy') return;
       const foe = e.target;
-      const shells = ENEMIES[/** @type {keyof typeof ENEMIES} */ (foe.kind)]?.shells ?? 0;
+      const shells = /** @type {Record<string, { shells?: number }>} */ (ENEMIES)[foe.kind]?.shells ?? 0;
       if (shells > 0) {
         this.state.shells += shells;
         this.events.emit('shells', { amount: shells, position: { ...foe.position } });

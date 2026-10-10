@@ -37,6 +37,10 @@
  *                PLAYER.combo.pauseWindow)
  *   guardBreak   true: a blocked hit still lands and breaks the target's guard
  *                (the shield bash)
+ *   armorFrom    (enemy attacks) how far through the wind-up, 0..1, the enemy
+ *                stops flinching: a hit after that still hurts but doesn't
+ *                interrupt it, unless it breaks its poise (a charged chop, a
+ *                bash, a parry). Hitting early works; trading late doesn't
  *   rollCancelFrom  first frame a roll may interrupt the attack, when the lab's
  *                "attack-cancel windows" is on; otherwise only after `total`
  *   anim         the animation clip
@@ -72,6 +76,7 @@
  * @property {string | null} next
  * @property {string} [pauseNext]
  * @property {boolean} [guardBreak]
+ * @property {number} [armorFrom]
  * @property {number} chainFrom
  * @property {number} rollCancelFrom
  */
@@ -245,11 +250,13 @@ export const ATTACKS = {
     rollCancelFrom: 14,
   },
 
-  // The grunt's only attack. Its long startup is the telegraph: a clear
-  // wind-up (glow, ground ring, sound) before every hit.
+  // The grunt's chop. Its long startup is the telegraph: a clear wind-up
+  // (glow, ground ring, sound) before every hit. Sometimes it follows
+  // through with a cut (`next`, ENEMIES.grunt.comboChance).
   gruntChop: {
     name: 'Grunt chop',
     anim: '1H_Melee_Attack_Chop',
+    armorFrom: 0.6,
     startup: 34,
     active: 6,
     recovery: 32,
@@ -262,6 +269,46 @@ export const ATTACKS = {
     shake: 0.5,
     lunge: 3.2,
     hitbox: { reach: 1.15, radius: 0.55, height: 0.95, arcFrom: -20, arcTo: 20 },
+    next: 'gruntCut',
+    // (Enemies decide on a follow-up as the blow ends.)
+    chainFrom: 40,
+    rollCancelFrom: 999,
+  },
+  // The chop's follow-through: a quicker, wider diagonal cut. Its own short
+  // wind-up still shows the telegraph; no armour, so it can be interrupted.
+  gruntCut: {
+    name: 'Grunt cut',
+    anim: '1H_Melee_Attack_Slice_Diagonal',
+    startup: 18,
+    active: 5,
+    recovery: 38,
+    damage: 12,
+    poise: 0,
+    knockback: 4.5,
+    hitstun: 18,
+    hitstop: 5,
+    shake: 0.4,
+    lunge: 2.6,
+    hitbox: { reach: 1.1, radius: 0.55, height: 1.0, arcFrom: -50, arcTo: 40 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+  // After its shield stops your blow: a quick shove back with the shield.
+  gruntBash: {
+    name: 'Shield shove',
+    anim: 'Block_Attack',
+    startup: 16,
+    active: 4,
+    recovery: 30,
+    damage: 9,
+    poise: 0,
+    knockback: 6.5,
+    hitstun: 18,
+    hitstop: 5,
+    shake: 0.35,
+    lunge: 3,
+    hitbox: { reach: 0.95, radius: 0.55, height: 1.0, arcFrom: -30, arcTo: 30 },
     next: null,
     chainFrom: 999,
     rollCancelFrom: 999,
@@ -271,6 +318,7 @@ export const ATTACKS = {
   miteBite: {
     name: 'Bite',
     anim: 'Unarmed_Melee_Attack_Punch_A',
+    armorFrom: 0.7,
     startup: 20,
     active: 4,
     recovery: 26,
@@ -282,6 +330,26 @@ export const ATTACKS = {
     shake: 0.2,
     lunge: 4.2,
     hitbox: { reach: 0.85, radius: 0.45, height: 0.6, arcFrom: -15, arcTo: 15 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+  // A cindermite's leap from a few metres out: a longer crouch (the tell),
+  // then a long jump that closes the gap. Roll sideways, or block.
+  miteLeap: {
+    name: 'Leap',
+    anim: '1H_Melee_Attack_Jump_Chop',
+    startup: 30,
+    active: 14,
+    recovery: 34,
+    damage: 9,
+    poise: 0,
+    knockback: 3.5,
+    hitstun: 16,
+    hitstop: 4,
+    shake: 0.25,
+    lunge: 16,
+    hitbox: { reach: 1.1, radius: 0.5, height: 0.6, arcFrom: -10, arcTo: 10 },
     next: null,
     chainFrom: 999,
     rollCancelFrom: 999,
@@ -347,6 +415,22 @@ export const ATTACKS = {
 export const PROJECTILES = {
   cinderBolt: { name: 'Cinder bolt', speed: 8.5, radius: 0.32, life: 2.6, damage: 12, knockback: 4.5, hitstun: 18, hitstop: 4, shake: 0.25, height: 1.15 },
   ember: { name: 'Ember', speed: 9.5, radius: 0.36, life: 2.4, damage: 14, knockback: 5, hitstun: 20, hitstop: 4, shake: 0.3, height: 1.1 },
+};
+
+/**
+ * Ground hazards: an ash adept's flare. A ring appears where you stand and
+ * bursts after `delay` frames, hurting anyone still inside. A shield doesn't
+ * help (it comes from below): step out, or roll through the burst.
+ *
+ *   radius  m     delay  frames from the ring appearing to the burst
+ *   damage, knockback, hitstun, hitstop, shake: as for attacks
+ */
+
+/** @typedef {{ name: string, radius: number, delay: number, damage: number, knockback: number, hitstun: number, hitstop: number, shake: number }} HazardDef */
+
+/** @type {Record<string, HazardDef>} */
+export const HAZARDS = {
+  flare: { name: 'Ash flare', radius: 1.5, delay: 54, damage: 11, knockback: 4, hitstun: 18, hitstop: 4, shake: 0.3 },
 };
 
 /** The player's combo, in order: a fresh swing starts with the first. */

@@ -62,6 +62,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .reticle-name { position: absolute; left: 50%; top: -52px; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 system-ui, sans-serif; text-shadow: 0 1px 3px #000; }
 .reticle-hp { position: absolute; left: -30px; width: 60px; top: 36px; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
 .reticle-hp div { height: 100%; background: var(--orange); }
+.reticle-poise { position: absolute; left: -30px; width: 60px; top: 45px; height: 3px; border-radius: 2px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
+.reticle-poise div { height: 100%; background: #cfe3ff; }
 .banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; border-radius: var(--radius); background: rgba(43, 29, 74, 0.85); border: 2px solid var(--orange); font-size: 18px; font-weight: 600; text-align: center; max-width: 90vw; }
 .captions { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; }
 .caption { padding: 3px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.72); font-size: 16px; }

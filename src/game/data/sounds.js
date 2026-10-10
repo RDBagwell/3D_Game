@@ -76,6 +76,45 @@ export const SOUNDS = {
       tone(ctx, out, t + 0.12, { type: 'sine', from: 990, duration: 0.3, volume: 0.15 });
     },
   },
+  armored: {
+    caption: '[Clang: it keeps coming]',
+    volume: 0.8,
+    recipe: (ctx, out, t) => {
+      // A dull, heavy clank: the blow lands but doesn't stop it.
+      for (const [f, v] of [[180, 0.35], [410, 0.2], [930, 0.1]]) tone(ctx, out, t, { type: 'square', from: f, to: f * 0.92, duration: 0.25, volume: v });
+      noise(ctx, out, t, { duration: 0.08, filter: 'bandpass', from: 1200, volume: 0.5 });
+    },
+  },
+  flare: {
+    caption: '[An ash flare kindles under you]',
+    volume: 0.7,
+    recipe: (ctx, out, t) => {
+      // A rising hiss: get out before it peaks.
+      noise(ctx, out, t, { duration: 0.85, filter: 'bandpass', from: 400, to: 2400, volume: 0.45, attack: 0.6 });
+      tone(ctx, out, t, { type: 'sine', from: 160, to: 320, duration: 0.85, volume: 0.15, attack: 0.5 });
+    },
+  },
+  flare_burst: {
+    volume: 0.8,
+    recipe: (ctx, out, t) => {
+      noise(ctx, out, t, { duration: 0.4, filter: 'lowpass', from: 2400, to: 300, volume: 0.7 });
+      tone(ctx, out, t, { type: 'sawtooth', from: 120, to: 50, duration: 0.3, volume: 0.25 });
+    },
+  },
+  shells: {
+    volume: 0.5,
+    recipe: (ctx, out, t, rng) => {
+      // Little shells clinking into a pouch.
+      for (let i = 0; i < 3; i++) tone(ctx, out, t + i * 0.05, { type: 'sine', from: 1800 + rng() * 600, duration: 0.08, volume: 0.15 });
+    },
+  },
+  crumble: {
+    volume: 0.6,
+    recipe: (ctx, out, t, rng) => {
+      // Bones settling: a dry clatter.
+      for (let i = 0; i < 5; i++) noise(ctx, out, t + i * 0.06 + rng() * 0.03, { duration: 0.05, filter: 'bandpass', from: 1500 + rng() * 1500, volume: 0.35 });
+    },
+  },
   heartbeat: {
     volume: 0.7,
     recipe: (ctx, out, t) => {

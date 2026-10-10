@@ -188,7 +188,9 @@ for measuring on a phone.
   startup, active and recovery frames, cancel windows and hitboxes are data.
 - **The enemies' brains** (`src/game/enemies/`): one data-driven body with
   a melee brain, a caster brain and the boss's, all thinking without
-  physics so they're tested with made-up perceptions; and a scripted player
+  physics so they're tested with made-up perceptions. They share senses
+  (sight that walls block, hearing, calling allies), steer round walls,
+  and take turns from a shared attack budget; and a scripted player
   (`tests/helpers/bossBot.js`) that shows the boss is beatable on the
   Polished preset at every reaction timing tried and harder on Raw.
 - **The game-feel lab** (`src/game/lab/`, `src/game/data/feel.js`,

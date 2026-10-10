@@ -1,15 +1,20 @@
-import { StateMachine, angleDelta, DEG } from '../../engine/index.js';
+import { StateMachine } from '../../engine/index.js';
+import { perceive } from './senses.js';
 
 /**
  * The ash adept's decisions: a ranged caster that keeps its distance.
  *
- *   idle ──sees you──▶ chase ──in range──▶ keep (strafe at range) ──its turn──▶ cast ──▶ recover ─┐
- *                        ▲                  │ ▲ you close in                                       │
- *                        └──────────────────┘ └── flee (backs away fast) ◀──────────────────────────┘
+ *   idle ──sees you──▶ suspicious ──▶ chase ──in range──▶ keep (strafe at range) ──its turn──▶ cast ──▶ recover ─┐
+ *                                       ▲                  │ ▲ you close in                                       │
+ *                                       └──────────────────┘ └── flee (backs away fast) ◀──────────────────────────┘
+ *   lost you ──▶ return (walks home)     you swing at it up close, sometimes ──▶ dodge (a quick sidestep)
  *   hit ──▶ hitstun (short), or stagger when its poise breaks      hp 0 ──▶ dead
  *
+ * Its cast is a bolt, or (sometimes, when you're within `flareRange`) a
+ * flare: a ring on the ground where you stand that bursts a moment later.
+ *
  * Fairness, as with the grunt:
- *   - one adept casts at a time (the attack token);
+ *   - casting takes a turn from the room's attack budget, like a melee swing;
  *   - every bolt is telegraphed: a wind-up of `castFrames` with its staff
  *     glowing and the warning sign showing, and it stops turning to follow
  *     you `commitFrames` before it lets go, so a sidestep works;
@@ -21,18 +26,21 @@ import { StateMachine, angleDelta, DEG } from '../../engine/index.js';
  * reset), so the Enemy body and the view treat both alike.
  */
 
-/** @typedef {'idle' | 'chase' | 'keep' | 'flee' | 'cast' | 'recover' | 'hitstun' | 'stagger' | 'dead'} CasterState */
+/** @typedef {'idle' | 'suspicious' | 'chase' | 'keep' | 'flee' | 'dodge' | 'cast' | 'recover' | 'hitstun' | 'stagger' | 'return' | 'dead'} CasterState */
 
 /** @type {Record<CasterState, CasterState[]>} */
 export const CASTER_TRANSITIONS = {
-  idle: ['chase', 'hitstun', 'stagger', 'dead'],
-  chase: ['idle', 'keep', 'flee', 'hitstun', 'stagger', 'dead'],
-  keep: ['idle', 'chase', 'flee', 'cast', 'hitstun', 'stagger', 'dead'],
-  flee: ['idle', 'chase', 'keep', 'cast', 'hitstun', 'stagger', 'dead'],
+  idle: ['suspicious', 'chase', 'hitstun', 'stagger', 'dead'],
+  suspicious: ['chase', 'idle', 'hitstun', 'stagger', 'dead'],
+  chase: ['return', 'keep', 'flee', 'dodge', 'hitstun', 'stagger', 'dead'],
+  keep: ['return', 'chase', 'flee', 'dodge', 'cast', 'hitstun', 'stagger', 'dead'],
+  flee: ['return', 'chase', 'keep', 'dodge', 'cast', 'hitstun', 'stagger', 'dead'],
+  dodge: ['keep', 'flee', 'chase', 'return', 'hitstun', 'stagger', 'dead'],
   cast: ['recover', 'hitstun', 'stagger', 'dead'],
-  recover: ['keep', 'chase', 'flee', 'hitstun', 'stagger', 'dead'],
-  hitstun: ['hitstun', 'keep', 'flee', 'chase', 'stagger', 'dead'],
-  stagger: ['keep', 'flee', 'chase', 'hitstun', 'dead'],
+  recover: ['keep', 'chase', 'flee', 'return', 'hitstun', 'stagger', 'dead'],
+  hitstun: ['hitstun', 'keep', 'flee', 'chase', 'return', 'stagger', 'dead'],
+  stagger: ['keep', 'flee', 'chase', 'return', 'hitstun', 'dead'],
+  return: ['idle', 'suspicious', 'chase', 'hitstun', 'stagger', 'dead'],
   dead: [],
 };
 
@@ -48,6 +56,11 @@ export class CasterBrain {
     this.attack = null;
     this.frameNow = -1;
     this.aware = false;
+    this.hesitate = false;
+    this.unseen = 0;
+    /** What the current cast throws: a bolt, or a flare on the ground. @type {'bolt' | 'flare'} */
+    this.casting = 'bolt';
+    this.lastSwingSeen = 0;
     this.cooldown = 60;
     this.circleDir = 1;
     this.circleTimer = 0;
@@ -72,16 +85,8 @@ export class CasterBrain {
   update(ctx) {
     this.ctx = ctx;
     if (this.cooldown > 0) this.cooldown--;
-    const see = ctx.see;
-    if (!this.aware && see.playerAlive) {
-      const inView = Math.abs(angleDelta(ctx.facing, see.bearing)) <= (this.def.sightFov / 2) * DEG;
-      if ((see.distance <= this.def.sightRange && inView) || see.distance <= this.def.hearRange) {
-        this.aware = true;
-        ctx.emit('noticed', { id: this.id });
-      }
-    } else if (this.aware && (see.distance > this.def.loseRange || !see.playerAlive)) {
-      this.aware = false;
-    }
+    perceive(this, ctx);
+    if (ctx.see.crowdSide && !this.fsm.is('dodge')) this.circleDir = ctx.see.crowdSide;
     this.fsm.update(1 / 60);
     this.telegraph = this.fsm.is('cast');
   }
@@ -105,9 +110,20 @@ export class CasterBrain {
     };
     const tryCast = () => {
       const d = ctx().see.distance;
-      if (this.cooldown > 0 || d < 2.5 || d > far + 3) return false;
+      if (this.cooldown > 0 || d < 2.5 || d > far + 3 || ctx().see.visible === false) return false;
       if (!ctx().requestToken(this.id)) return false;
+      const [fmin, fmax] = this.def.flareRange ?? [0, 0];
+      this.casting = this.def.flare && d >= fmin && d <= fmax && ctx().random() < (this.def.flareChance ?? 0) ? 'flare' : 'bolt';
       return this.fsm.go('cast');
+    };
+    /** You start a swing up close: sometimes it sidesteps. */
+    const tryDodge = () => {
+      const see = ctx().see;
+      if (!see.playerAttacking || see.playerSwingId === this.lastSwingSeen) return false;
+      this.lastSwingSeen = see.playerSwingId;
+      if (see.distance > (this.def.dodgeRange ?? 0) || ctx().random() >= (this.def.dodgeChance ?? 0)) return false;
+      this.circleDir = see.crowdSide || (ctx().random() < 0.5 ? -1 : 1);
+      return this.fsm.go('dodge');
     };
 
     return {
@@ -115,12 +131,34 @@ export class CasterBrain {
         enter: () => stop(),
         update: () => {
           stop();
-          if (this.aware) this.fsm.go('chase');
+          if (this.aware) this.fsm.go(this.hesitate ? 'suspicious' : 'chase');
+        },
+      },
+      suspicious: {
+        enter: () => ctx().emit('suspicious', { id: this.id }),
+        update: () => {
+          if (!this.aware) return void this.fsm.go('idle');
+          set('none', 0, 300);
+          if (this.fsm.frames >= (this.def.suspiciousFrames ?? 0)) this.fsm.go('chase');
+        },
+      },
+      return: {
+        update: () => {
+          if (this.aware) return void this.fsm.go(this.hesitate ? 'suspicious' : 'chase');
+          this.intent = { move: 'home', speed: this.def.walkSpeed, face: null, turnRate: 0 };
+          if ((ctx().see.homeDistance ?? 0) < 0.6) this.fsm.go('idle');
+        },
+      },
+      dodge: {
+        update: () => {
+          set('circle', this.def.dodgeSpeed ?? this.def.runSpeed, 720);
+          if (this.fsm.frames >= (this.def.dodgeFrames ?? 1)) this.fsm.go(this.aware ? 'keep' : 'return');
         },
       },
       chase: {
         update: () => {
-          if (!this.aware) return void this.fsm.go('idle');
+          if (!this.aware) return void this.fsm.go('return');
+          if (tryDodge()) return;
           set('toward', this.def.runSpeed);
           if (ctx().see.distance <= far) this.fsm.go('keep');
         },
@@ -130,8 +168,8 @@ export class CasterBrain {
           this.circleTimer = 50 + Math.floor((this.ctx?.random() ?? 0.5) * 60);
         },
         update: () => {
-          if (!this.aware) return void this.fsm.go('idle');
-          if (position() || tryCast()) return;
+          if (!this.aware) return void this.fsm.go('return');
+          if (tryDodge() || position() || tryCast()) return;
           const d = ctx().see.distance;
           if (--this.circleTimer <= 0) {
             this.circleDir = ctx().random() < 0.5 ? -1 : 1;
@@ -143,7 +181,8 @@ export class CasterBrain {
       },
       flee: {
         update: () => {
-          if (!this.aware) return void this.fsm.go('idle');
+          if (!this.aware) return void this.fsm.go('return');
+          if (tryDodge()) return;
           set('away', this.def.runSpeed);
           // Cornered for a while? Turn and cast anyway (still telegraphed).
           if (this.fsm.frames > 90 && tryCast()) return;
@@ -153,7 +192,7 @@ export class CasterBrain {
       cast: {
         enter: () => {
           this.windupProgress = 0;
-          ctx().emit('windup', { id: this.id, cast: this.def.cast });
+          ctx().emit('windup', { id: this.id, cast: this.casting === 'flare' ? this.def.flare : this.def.cast });
         },
         update: () => {
           const f = this.fsm.frames / (ctx().slow ?? 1);
@@ -162,7 +201,8 @@ export class CasterBrain {
           if (f >= total - this.def.commitFrames) stop(ctx().facing);
           else set('none', 0, this.def.windupTurn);
           if (f >= total) {
-            ctx().shoot?.(this.def.cast, ctx().facing);
+            if (this.casting === 'flare') ctx().flare?.(this.def.flare);
+            else ctx().shoot?.(this.def.cast, ctx().facing);
             this.fsm.go('recover');
           }
         },
@@ -202,12 +242,22 @@ export class CasterBrain {
     ctx.releaseToken(this.id);
     const [min, max] = this.def.cooldown;
     this.cooldown = Math.round(min + ctx.random() * (max - min));
+    if (!this.aware) return void this.fsm.go('return');
     this.fsm.go(ctx.see.distance < this.def.fleeRange ? 'flee' : 'keep');
+  }
+
+  /** Told by an ally that the player is here: come at once. */
+  alert() {
+    if (this.aware || this.fsm.is('dead')) return false;
+    this.aware = true;
+    this.hesitate = false;
+    return true;
   }
 
   /** @param {boolean} poiseBroken */
   onHit(poiseBroken) {
     this.aware = true;
+    this.hesitate = false;
     this.fsm.go(poiseBroken ? 'stagger' : 'hitstun');
   }
 
@@ -217,6 +267,8 @@ export class CasterBrain {
 
   reset() {
     this.aware = false;
+    this.hesitate = false;
+    this.unseen = 0;
     this.cooldown = 60;
     this.fsm.force('idle');
   }
