@@ -63,10 +63,6 @@ export const halls = {
     { model: 'dun_barrel', at: [-5.6, 0, -36.5], yaw: 0.4, scale: 0.55, solid: [1, 1.1, 1] },
     { model: 'dun_candles', at: [-3, 0, -63], scale: 0.9 },
     { model: 'dun_candles', at: [3, 0, -63], scale: 0.9 },
-    { model: 'dun_pillar', at: [-8, 0, -78], scale: 0.85, solid: [1.8, 3.4, 1.4] },
-    { model: 'dun_pillar', at: [8, 0, -78], scale: 0.85, solid: [1.8, 3.4, 1.4] },
-    { model: 'dun_pillar', at: [-6, 0, -96], scale: 0.85, solid: [1.8, 3.4, 1.4] },
-    { model: 'dun_pillar', at: [6, 0, -96], scale: 0.85, solid: [1.8, 3.4, 1.4] },
     { model: 'dun_banner', at: [-4, 0, -100.3], scale: 0.9 },
     { model: 'dun_banner', at: [4, 0, -100.3], scale: 0.9 },
   ],
@@ -95,6 +91,11 @@ export const halls = {
     { id: 'vault_door', at: [0, 0, -49.5], behind: 'hall_gate' },
     { id: 'hearthstone_ante', at: [2.4, 0, -59.5], behind: 'vault_door' },
     { id: 'hearth', at: [0, 0.3, -96], behind: 'vault_door' },
+    // The arena's pillars: cover from the Warden, but its slams smash them.
+    { id: 'arena_pillar_nw', at: [-8, 0, -78], behind: 'vault_door' },
+    { id: 'arena_pillar_ne', at: [8, 0, -78], behind: 'vault_door' },
+    { id: 'arena_pillar_sw', at: [-6, 0, -96], behind: 'vault_door' },
+    { id: 'arena_pillar_se', at: [6, 0, -96], behind: 'vault_door' },
   ],
   exits: [{ to: 'village', spawn: 'gate', at: [0, 1.5, 9.5], size: [3, 3, 1.6] }],
   triggers: [

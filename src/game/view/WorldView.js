@@ -377,7 +377,9 @@ export class WorldView {
         this.scene.add(m);
       }
       this.flares.set(h.id, { ring, fill });
-      if (f().telegraph) play('flare', h.position);
+      // One warning per fissure (its first ring), not one per ring.
+      const first = (h.delay ?? h.def.delay) === h.def.delay;
+      if (f().telegraph && first) play(h.kind === 'fissure' ? 'fissure' : 'flare', h.position);
     });
     ev.on('hazardBurst', (d) => {
       const m = this.flares.get(d.hazard.id);
@@ -393,6 +395,13 @@ export class WorldView {
     ev.on('alerted', (d) => {
       this.floaters.add('!', { ...d.foe.position, y: d.foe.position.y + d.foe.height + 0.4 }, 'note big');
       play(d.foe.kind === 'mite' ? 'mite_noticed' : 'noticed', d.foe.position, 0.7);
+    });
+    ev.on('objectBroken', (d) => {
+      play('pillar_break', d.point);
+      if (f().particles) this.particles.burst(d.point, { x: 0, y: 1, z: 0 }, 40, { color: [0.6, 0.56, 0.5], speed: 6, life: 0.9, gravity: 12, spread: 1.6 });
+      this.floaters.add('Smashed!', { ...d.point, y: d.point.y + 1 }, 'note');
+      this.shake.addTrauma(0.5);
+      if (f().rumble) this.input.rumble(0.7, 0.5, 300);
     });
     ev.on('objectHit', (d) => {
       play('switch_hit', d.point);
@@ -504,7 +513,7 @@ export class WorldView {
     for (const h of sb.hazards) {
       const m = this.flares.get(h.id);
       if (!m) continue;
-      const t = Math.min(1, h.age / h.def.delay);
+      const t = Math.min(1, h.age / (h.delay ?? h.def.delay));
       m.fill.scale.setScalar(h.def.radius * t);
       /** @type {MeshBasicMaterial} */ (m.ring.material).opacity = 0.6 + 0.4 * Math.abs(Math.sin(this.time * (6 + t * 14)));
     }

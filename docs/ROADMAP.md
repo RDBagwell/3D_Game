@@ -82,13 +82,17 @@ pull request with its own tests. Phases run in order; each builds on the last.
   (The shells are still counted the moment an enemy falls, so nothing can be
   lost by leaving them.)
 
-## Phase 5: the Warden, rebuilt
+## Phase 5: the Warden, rebuilt (done; see docs/GAME-FEEL.md)
 
-- It picks attacks by where you stand: a stomp if you're behind it, a
-  delayed slam, and a sweep-into-slam combo in phase two.
-- Slams break the pillars.
-- The scripted player in `tests/helpers/bossBot.js` must still win on
-  Polished at every reaction timing, and Raw stays harder.
+- **Attacks by where you stand:**
+  - a stomp if you're behind it;
+  - a delayed slam from a few metres off;
+  - in phase two, a sweep that turns into a slam, and a fissure from afar.
+- **Pillars:** slams smash the arena's pillars (a new `breakable` object type).
+- **Phase two:** a brighter core and faster turns.
+- **Fairness:** the scripted player in `tests/helpers/bossBot.js` still wins
+  on Polished at every reaction timing, and Raw stays harder. The table is in
+  GAME-FEEL.md.
 
 ## Phase 6: a world worth exploring
 

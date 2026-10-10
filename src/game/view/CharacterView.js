@@ -346,7 +346,9 @@ export class CharacterView {
     if (this.model.core) {
       const m = /** @type {any} */ (this.model.core.material);
       const open = state === 'stuck';
-      m.emissiveIntensity = open ? 3 + Math.sin(brain.fsm.frames * 0.4) * 1.2 : state === 'roar' ? 2 : 0.4;
+      // Phase two: its core burns brighter, pulsing.
+      const idle = /** @type {any} */ (brain).phase === 2 ? 1.2 + Math.sin(this.time * 5) * 0.3 : 0.4;
+      m.emissiveIntensity = open ? 3 + Math.sin(brain.fsm.frames * 0.4) * 1.2 : state === 'roar' ? 2 : idle;
       this.model.core.scale.setScalar(open ? 1.6 : 1);
     }
 

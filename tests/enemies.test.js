@@ -319,3 +319,82 @@ describe('senses in the Hearth Halls', () => {
     adv.dispose();
   });
 });
+
+describe('the Cinder Warden, rebuilt', () => {
+  /** A Warden ready to pick its next attack, the player `distance` away straight ahead (+z) of the world. */
+  function ready(distance, { facing = 0, random = 0.5, phase = 1 } = {}) {
+    const brain = new WardenBrain('w', ENEMIES.warden);
+    const c = ctx(distance, { facing, random: () => random });
+    brain.aware = true;
+    brain.rest = 0;
+    brain.phase = phase;
+    brain.fsm.force('approach');
+    brain.update(c);
+    return { brain, c };
+  }
+
+  it('picks by where you stand: a stomp behind it, sometimes a delayed slam from a few metres', () => {
+    const behind = ready(2.5, { facing: Math.PI });
+    expect(behind.brain.state).toBe('windup');
+    expect(behind.brain.attackKey).toBe('wardenStomp');
+
+    const far = ready(3.5, { random: 0.1 });
+    expect(far.brain.attackKey).toBe('wardenSlamLate');
+    expect(ATTACKS.wardenSlamLate.startup).toBeGreaterThan(ATTACKS.wardenSlam.startup);
+
+    const near = ready(2.5, { random: 0.1 });
+    expect(['wardenSweep', 'wardenSlam']).toContain(near.brain.attackKey);
+  });
+
+  it('in phase two, a sweep sometimes turns straight into a telegraphed slam', () => {
+    const { brain, c } = ready(2.5, { random: 0.1, phase: 2 });
+    brain.use('wardenSweep');
+    let guard = 0;
+    while (brain.state !== 'attack' && guard++ < 200) brain.update(c);
+    while (brain.state === 'attack' && guard++ < 400) brain.update(c);
+    expect(brain.state).toBe('windup');
+    expect(brain.attackKey).toBe('wardenSlamFollow');
+    expect(c.events.filter(([n]) => n === 'windup')).toHaveLength(2);
+  });
+
+  it("a fissure's rings burst one after another towards you, and hurt you once", async () => {
+    const sb = await Sandbox.create({ area: 'halls', spawn: 'ante', spawnEnemy: (s) => s.name === 'warden', seed: 'warden' });
+    const warden = /** @type {any} */ (sb.foes.find((f) => f.def.brain === 'warden'));
+    sb.player.body.teleport({ x: 0, y: 0, z: -83.2 }); // on the line, between two rings
+    sb.step(idle);
+    const bursts = [];
+    let hits = 0;
+    sb.events.on('hazardBurst', (e) => bursts.push(sb.tick));
+    sb.events.on('hit', (e) => e.hazard && hits++);
+    sb.fissure(ENEMIES.warden.fissure, warden, 0);
+    expect(sb.hazards.length).toBe(ENEMIES.warden.fissure.count);
+    for (let i = 0; i < 120; i++) sb.step(idle);
+    expect(bursts).toHaveLength(ENEMIES.warden.fissure.count);
+    expect(bursts[1] - bursts[0]).toBe(ENEMIES.warden.fissure.stagger);
+    expect(hits).toBe(1);
+    sb.dispose();
+  });
+
+  it("a slam smashes the pillar it lands on: it stops blocking the way", async () => {
+    const sb = await Sandbox.create({ area: 'halls', spawn: 'ante', spawnEnemy: (s) => s.name === 'warden', seed: 'warden' });
+    const warden = /** @type {any} */ (sb.foes.find((f) => f.def.brain === 'warden'));
+    const pillar = /** @type {any} */ (sb.objects.find((o) => o.id === 'arena_pillar_nw'));
+    // The Warden on one side of the pillar, you hiding on the other.
+    warden.body.teleport({ x: -8, y: 0, z: -81.2 });
+    warden.facing = 0;
+    sb.player.body.teleport({ x: -8, y: 0, z: -74.5 });
+    sb.step(idle);
+    const through = () => sb.physics.rayDistance({ x: -8, y: 1, z: -80 }, { x: 0, y: 0, z: 1 }, 4);
+    expect(through()).not.toBeNull(); // the pillar is in the way
+    warden.brain.aware = true;
+    warden.brain.use('wardenSlam');
+    let broken = null;
+    sb.events.on('objectBroken', (e) => (broken = e.id));
+    for (let i = 0; i < 120 && !broken; i++) sb.step(idle);
+    expect(broken).toBe('arena_pillar_nw');
+    expect(pillar.open).toBe(true);
+    sb.step(idle); // (the physics world catches up on its next step)
+    expect(through()).toBeNull();
+    sb.dispose();
+  });
+});

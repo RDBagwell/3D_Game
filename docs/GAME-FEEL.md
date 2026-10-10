@@ -348,6 +348,26 @@ which only hits a narrow strip ahead, shows that strip as a lane on the floor
 that fills as the axe rises, and each has its own wind-up sound. The slam leaves an opening of about two seconds (its axe stuck, its core
 glowing, double damage).
 
+**The Warden reads where you stand** (Phase 5 of [ROADMAP.md](ROADMAP.md);
+`WardenBrain.choose`, numbers in `ENEMIES.warden.choice`).
+
+- **Behind it, close:** a stomp. A 28-frame wind-up with its own thud and
+  caption, and a closing ring all round it. Its back is no longer a safe
+  place to stand.
+- **A few metres off:** sometimes (35%) the delayed slam. The same lane, but
+  the axe hangs for 66 frames and the blow lunges further. A roll timed to the
+  axe going up comes too early; wait for the lane to fill.
+- **Phase two:**
+  - A sweep sometimes (50%) turns straight into a follow-up slam, with its
+    own 40-frame wind-up and lane.
+  - From afar it casts, half the time, a fissure instead of the ember volley:
+    a line of six rings towards you, bursting one after another. A shield
+    doesn't help; step out of the line or roll. Its rings overlap, but it
+    hurts you once.
+  - Its core burns brighter, and it turns faster while winding up.
+- **The pillars break.** Every slam smashes an arena pillar it lands on, so
+  hiding behind one works once.
+
 ### Enemies that fight back
 
 **The problem.** Telegraphs only matter if ignoring them costs something. When
@@ -401,13 +421,31 @@ real simulation, steering round a wall, calling allies, the portcullis, and
 the budget never going over 3 in a 20-second brawl.
 
 **Testing fairness.** `tests/helpers/bossBot.js` is a scripted player that
-only sees what you see (states, distances, the closing ring) and only
-presses buttons. It fights the Warden with ordinary tactics: keep a few
-metres away, roll when the ring has nearly closed, punish the opening. On
-Polished it wins at every reaction timing tried (rolling 4, 8, 12 and 16
-frames before the blow). On Raw (no telegraphs, no roll invulnerability) the
-same player lost two of those four fights. `tests/enemies.test.js` keeps
-both facts true. It's not a human playtest, and it's listed as one in the
+only sees what you see (states, distances, the closing ring, rings on the
+floor) and only presses buttons. It fights the Warden with ordinary tactics:
+- keep a few metres away;
+- roll when the ring has nearly closed (sideways from any slam's lane, back
+  from a sweep or a stomp);
+- step out of fissure rings;
+- punish the opening.
+
+Its results against the rebuilt Warden (Phase 5), with one tonic, rolling
+4, 8, 12 or 16 frames before the blow:
+
+| Preset | 4 | 8 | 12 | 16 |
+| --- | --- | --- | --- | --- |
+| Polished | won, 100 HP left | won, 100 | won, 100 | won, 100 |
+| Raw | **lost** (Warden at 152 HP) | won, 3 HP left | won, 100 | won, 43 |
+
+Before Phase 5, Polished also won all four (one with 49 HP left), and Raw
+lost one of four. On Raw there are no telegraphs and no roll
+invulnerability. `tests/enemies.test.js` keeps both facts true.
+`tests/helpers/bossBot.js` also reports which moves the Warden used in each
+fight.
+
+The bot never ends up behind the Warden, so it never sees the stomp. The
+stomp, the follow-up slam, the fissure and a pillar breaking each have their
+own test in `tests/enemies.test.js`. It's not a human playtest, and it's listed as one in the
 PR, but it makes "fair on Polished, harder on Raw" something a test can
 break.
 
