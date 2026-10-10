@@ -5,7 +5,7 @@
  * Enemies all use the same body (enemies/Enemy.js) and one of three brains,
  * chosen by `brain`:
  *
- *   melee   GruntBrain: notice, chase, circle, wait for the attack token,
+ *   melee   GruntBrain: notice, chase, circle, wait for a turn from the room's budget,
  *           approach, wind up (telegraphed), strike, recover. Grunts and
  *           cindermites differ only in these numbers.
  *   caster  CasterBrain: keep its distance, back away when you close in,
@@ -13,10 +13,24 @@
  *           block, or cut out of the air.
  *   warden  WardenBrain: the boss's two phases (see that file).
  *
- * `token` limits how many of a group may attack at once (grunts: one at a
- * time; cindermites: two). `heavy` enemies aren't knocked back or
- * interrupted by hits.
+ * `threat` is what an enemy's turn to attack costs from the room's shared
+ * budget (ENEMY_BUDGET): a grunt (2) and a cindermite (1) may attack
+ * together, two grunts may not. The boss has a budget of its own. `heavy`
+ * enemies aren't knocked back or interrupted by hits.
+ *
+ * Senses, shared by every type: they notice you by sight (in range, in
+ * their field of view, nothing solid in between) or by hearing (close, any
+ * direction). Seen from afar, they hesitate a moment (`suspiciousFrames`)
+ * before coming. Noticing you, they call allies within `alertRadius` who can
+ * see them. They give up beyond `loseRange` or after `loseSightFrames` out
+ * of sight, and walk back to where they started.
  */
+
+/** How much threat (ENEMIES[type].threat) may be attacking at once, per room. */
+export const ENEMY_BUDGET = 3;
+
+/** Senses every enemy shares unless its own entry says otherwise. */
+const SENSES = { suspiciousFrames: 24, alertRadius: 7, loseSightFrames: 240 };
 
 export const PLAYER = {
   maxHp: 100,
@@ -147,7 +161,13 @@ export const ENEMIES = {
     respawnSeconds: 6,
     /** Shells it leaves when beaten. */
     shells: 6,
-    token: { group: 'grunt', max: 1 },
+    threat: 2,
+    ...SENSES,
+    /** Chance it follows its chop with a second cut (the chop's `next`). */
+    comboChance: 0.4,
+    /** After its shield stops a blow: chance it shoves back (`counter`). */
+    counterChance: 0.5,
+    counter: 'gruntBash',
   },
   mite: {
     name: 'Cindermite',
@@ -175,7 +195,10 @@ export const ENEMIES = {
     commitFrames: 6,
     respawnSeconds: 6,
     shells: 2,
-    token: { group: 'mite', max: 2 },
+    threat: 1,
+    ...SENSES,
+    /** From this far (metres, min and max) it may leap at you instead of closing in. */
+    leap: { attack: 'miteLeap', range: [2.8, 4.2], cooldown: 200 },
   },
   adept: {
     name: 'Ash Adept',
@@ -208,7 +231,18 @@ export const ENEMIES = {
     commitFrames: 10,
     respawnSeconds: 6,
     shells: 5,
-    token: { group: 'adept', max: 1 },
+    threat: 1,
+    ...SENSES,
+    /** Sometimes it casts a flare under you instead of a bolt (data/attacks.js HAZARDS)... */
+    flare: 'flare',
+    flareChance: 0.4,
+    /** ...when you're within this range. */
+    flareRange: [3, 9],
+    /** Chance it sidesteps a swing you start nearby (within `dodgeRange`), and how. */
+    dodgeChance: 0.5,
+    dodgeRange: 4,
+    dodgeFrames: 20,
+    dodgeSpeed: 6,
   },
   warden: {
     name: 'Cinder Warden',
@@ -251,7 +285,9 @@ export const ENEMIES = {
     respawnSeconds: 0,
     // Its reward is in the Hearth Halls' data (the `defeat` effects), not paid per kill.
     shells: 0,
-    token: { group: 'warden', max: 1 },
+    threat: 1,
+    /** Its own budget: its summons don't wait for it, nor it for them. */
+    boss: true,
   },
   dummy: {
     name: 'Training dummy',

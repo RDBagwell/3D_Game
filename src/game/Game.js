@@ -328,7 +328,8 @@ export class Game {
       this.hud.toast(`${title}: ${q.name}`, q.text, q.status);
       this.audio.play(q.status === 'done' ? 'quest_done' : 'quest');
     });
-    adventure.events.on('shells', (e) => this.view.floaters.add(`+${e.amount} shells`, { ...e.position, y: e.position.y + 1.6 }, 'note good'));
+    // The shells spill out and fly to you (already counted: the beads are only a picture).
+    adventure.events.on('shells', (e) => this.view.spillShells(e.position, e.amount));
     adventure.events.on('healed', () => this.audio.play('drink'));
     if (resume) await adventure.resume();
     else await adventure.enter(area, spawn);

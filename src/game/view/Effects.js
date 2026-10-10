@@ -1,4 +1,4 @@
-import { BufferGeometry, BufferAttribute, Points, PointsMaterial, AdditiveBlending, CanvasTexture, Vector3 } from 'three';
+import { BufferGeometry, BufferAttribute, Points, PointsMaterial, AdditiveBlending, CanvasTexture, Vector3, Group, Mesh, SphereGeometry, MeshBasicMaterial } from 'three';
 
 /**
  * Hit sparks and dust (one particle system, one draw call), and floating
@@ -183,3 +183,81 @@ function dotTexture() {
   g.fillRect(0, 0, 32, 32);
   return new CanvasTexture(c);
 }
+
+/**
+ * Shells spilled by a beaten enemy: little glowing beads that pop out, then
+ * fly to the hero. Purely a picture: the shells are already counted (the
+ * adventure credits them when the enemy falls); `onArrive` fires when the
+ * last bead reaches the hero, for the "+N shells" note and the clink.
+ */
+export class ShellOrbs {
+  constructor() {
+    this.object = new Group();
+    this.geometry = new SphereGeometry(0.1, 8, 6);
+    this.material = new MeshBasicMaterial({ color: 0xffe2a0 });
+    /** @type {{ beads: { mesh: Mesh, v: Vector3, t: number, done: boolean }[], onArrive: () => void }[]} */
+    this.spills = [];
+  }
+
+  /**
+   * @param {{ x: number, y: number, z: number }} at
+   * @param {number} amount  shells (one bead each, up to 8)
+   * @param {() => void} onArrive
+   */
+  spill(at, amount, onArrive) {
+    const beads = [];
+    for (let i = 0; i < Math.min(8, Math.max(1, amount)); i++) {
+      const mesh = new Mesh(this.geometry, this.material);
+      mesh.position.set(at.x, at.y + 0.8, at.z);
+      const a = Math.random() * Math.PI * 2;
+      const v = new Vector3(Math.cos(a) * 2, 3.5 + Math.random() * 1.5, Math.sin(a) * 2);
+      this.object.add(mesh);
+      beads.push({ mesh, v, t: -i * 0.04, done: false });
+    }
+    this.spills.push({ beads, onArrive });
+  }
+
+  /**
+   * @param {number} dt
+   * @param {{ x: number, y: number, z: number }} target  the hero's chest
+   */
+  update(dt, target) {
+    const to = new Vector3();
+    for (const spill of this.spills) {
+      for (const b of spill.beads) {
+        if (b.done) continue;
+        b.t += dt;
+        if (b.t < 0) continue;
+        const p = b.mesh.position;
+        if (b.t < POP) {
+          // Pop out and fall a little.
+          b.v.y -= 12 * dt;
+          p.addScaledVector(b.v, dt);
+        } else {
+          // Then home in, faster and faster.
+          to.set(target.x, target.y, target.z).sub(p);
+          const d = to.length();
+          const speed = 4 + (b.t - POP) * 30;
+          if (d <= speed * dt + 0.1) {
+            b.done = true;
+            this.object.remove(b.mesh);
+            continue;
+          }
+          p.addScaledVector(to, (speed * dt) / d);
+        }
+      }
+    }
+    for (const spill of this.spills) {
+      if (spill.beads.every((b) => b.done)) spill.onArrive();
+    }
+    this.spills = this.spills.filter((s) => !s.beads.every((b) => b.done));
+  }
+
+  clear() {
+    this.object.clear();
+    this.spills = [];
+  }
+}
+
+/** Seconds the beads spend popping out before they fly to the hero. */
+const POP = 0.35;

@@ -328,8 +328,8 @@ blade glows, and a rising whine plays from its position, with a caption
 motion and sound as well as colour, so they work for colour-blind players
 and players who can't hear. The grunt keeps turning towards you during the
 wind-up, slowly, and stops 9 frames before the hit, so a late roll or a step
-to the side works. Only one grunt attacks at a time (the attack token), and
-after attacking it recovers for 32 frames: your opening. The flip side: a
+to the side works. Only so many attack at once (the room's budget, below),
+and after attacking it recovers for 32 frames: your opening. The flip side: a
 heavy blow (the grunt's chop, the Warden's sweep: `counterHit` in
 `attacks.js`) that lands while you're still winding up your own swing is a
 **counter hit** and knocks you down, so attacking into a wind-up you've seen
@@ -340,14 +340,65 @@ Switch telegraphs off and the wind-up is still there, but only in the
 animation: the same fight suddenly feels unfair.
 
 **The rest of the cast follows the same rules.** Cindermites wind up for 20
-frames (short, but there's a ring, a hiss and a caption), and two may attack
-at once. Ash adepts wind up 44 frames before each bolt, stop aiming 10
+frames (short, but there's a ring, a hiss and a caption). Ash adepts wind up 44 frames before each bolt, stop aiming 10
 frames before they let go, and the bolt flies at 8.5 m/s: roll through it,
 block it, or cut it out of the air. The Cinder Warden's sweep winds up for
 34 frames and its slam for 48. The sweep's ring shows its reach; the slam,
 which only hits a narrow strip ahead, shows that strip as a lane on the floor
 that fills as the axe rises, and each has its own wind-up sound. The slam leaves an opening of about two seconds (its axe stuck, its core
 glowing, double damage).
+
+### Enemies that fight back
+
+**The problem.** Telegraphs only matter if ignoring them costs something. When
+any hit cancels a wind-up, the safest answer to every warning is to swing
+first: the hero's 7-frame opener always beats a 34-frame chop. And enemies
+that only walk straight at you, one move each, never make you read anything.
+
+**Here** (Phase 4 of [ROADMAP.md](ROADMAP.md), all numbers in
+[`actors.js`](../src/game/data/actors.js) and
+[`attacks.js`](../src/game/data/attacks.js)):
+
+- **Armour late in a wind-up.** Past `armorFrom` of its wind-up (60% for the
+  grunt's chop, 70% for a cindermite's bite) an enemy still takes the damage
+  but doesn't flinch: "Armoured!", a dull clang, and the blow still comes.
+  Hit it early, or roll. A blow that breaks its poise (the charged chop, the
+  shield bash, a parry) still staggers it, and the lock-on reticle shows its
+  poise under its health so you can see how close that is.
+- **Second moves.**
+  - A grunt sometimes follows its chop with a quicker diagonal cut (40%), on
+    the same turn and with its own short telegraph.
+  - When its shield stops your blow, it sometimes shoves back with it (50%),
+    after a beat.
+  - A cindermite a few metres out sometimes leaps at you instead of closing in.
+  - An ash adept sometimes casts a **flare** under you instead of a bolt: a
+    ring on the ground that fills, then bursts. A shield doesn't help; step
+    out or roll. When you swing at an adept up close, it sometimes
+    sidesteps.
+- **Moving like a group.**
+  - Enemies look ahead as they walk and turn towards the side with more room
+    when a wall or pillar is in the way.
+  - Allies that get too close push apart, and each circles you away from
+    its nearest ally, so a pack spreads round you instead of stacking.
+- **Senses.**
+  - They see only what nothing solid hides (no more noticing you through the
+    Key Vault's portcullis), but still hear you close by.
+  - Seen from afar, they stop and look first (a "?"). Then they call allies
+    near them who can see them (a "!").
+  - They give up after 4 s without seeing you, or beyond their range, and
+    walk back to where they started, poise restored.
+- **A shared budget.** An attack turn costs the enemy's `threat` (grunt 2,
+  cindermite and adept 1) from a room budget of 3. A grunt and a cindermite
+  may attack together; two grunts may not. The others circle and wait.
+  (Before, each type had its own token, so a grunt, two mites and an adept
+  could all swing at once.) The Warden has a budget of its own.
+- **Death.** Skeletons crumble to bones (their own clip), then fade away in a
+  puff of ash. Their shells spill out as glowing beads that fly to you.
+
+`tests/gruntAi.test.js` and `tests/enemies.test.js` cover each of these: the
+armour point, the follow-up and the shove, the leap and the flare in the
+real simulation, steering round a wall, calling allies, the portcullis, and
+the budget never going over 3 in a 20-second brawl.
 
 **Testing fairness.** `tests/helpers/bossBot.js` is a scripted player that
 only sees what you see (states, distances, the closing ring) and only
@@ -547,6 +598,9 @@ Each of these is checked at the moment it fires
 | **Hit direction** | When you're hit, a red arc on a ring round the middle of the screen points to where it came from | Hits from behind are no longer a mystery |
 | **Merged numbers** | Damage numbers on the same target within 0.6 s add up into one number, which pops as it grows | A combo reads as one total instead of a pile of numbers |
 | **Parry and charge** | A bright ring, sparks and "Parried!"; a glowing, humming blade at full charge | The two skill moves announce themselves |
+| **Armour** | "Armoured!" and a dull clang when a hit doesn't stop an enemy's wind-up | It reads as a rule, not a missed hit |
+| **Enemy alerts** | "?" over an enemy that has glimpsed you, "!" over one an ally has called | You see a fight coming before it starts |
+| **Crumble and shells** | Beaten skeletons fall to bones and fade in ash; their shells fly to you as beads | The kill pays off, and the field clears |
 
 ---
 

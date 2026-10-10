@@ -25,6 +25,10 @@ const WHITE = new Color(1, 1, 1);
 const ORANGE = new Color(1, 0.45, 0.1);
 /** How far through the chop clip its wind-up peaks: where the charge pose holds. */
 const CHARGE_POSE = 0.35;
+/** A beaten skeleton lies this long (seconds) before its bones fade... */
+const CRUMBLE_AFTER = 1.3;
+/** ...over this long. */
+const CRUMBLE_FADE = 0.8;
 
 export class CharacterView {
   /**
@@ -46,6 +50,11 @@ export class CharacterView {
     this.glowing = false;
     /** When the shield last took a blow (this.time), or -1. */
     this.blockedAt = -1;
+    /** Seconds since it fell (enemies). */
+    this.deadTime = 0;
+    this.crumbled = false;
+    /** It just started to fade: the WorldView puffs ash and clears this. */
+    this.crumbleBurst = false;
     /** True while materials carry flash emissive that must be cleared. */
     this.flashed = false;
     /** Softer flashes with reduced motion. */
@@ -115,6 +124,34 @@ export class CharacterView {
     return Math.min(2.6, Math.max(0.5, speed / natural));
   }
 
+  /**
+   * A beaten skeleton: after its crumbling clip, the bones fade away (with a
+   * puff of ash: `crumbleBurst`, picked up by the WorldView). Back to solid
+   * if it comes back (the training ring).
+   * @param {number} dt
+   */
+  crumble(dt) {
+    const a = /** @type {any} */ (this.actor);
+    if (a.def?.brain === 'warden') return;
+    if (a.alive) {
+      if (this.deadTime > 0) {
+        this.deadTime = 0;
+        this.crumbled = false;
+        this.root.visible = true;
+        this.setOpacity(1);
+      }
+      return;
+    }
+    this.deadTime += dt;
+    const fade = Math.min(1, Math.max(0, (this.deadTime - CRUMBLE_AFTER) / CRUMBLE_FADE));
+    if (fade > 0 && !this.crumbled) {
+      this.crumbled = true;
+      this.crumbleBurst = true;
+    }
+    if (fade > 0) this.setOpacity(1 - fade);
+    this.root.visible = fade < 1;
+  }
+
   /** The shield took a blow: a short recoil (Block_Hit) before holding it up again. */
   blockFlash() {
     this.blockedAt = this.time;
@@ -144,7 +181,10 @@ export class CharacterView {
     }
 
     if (this.kind === 'player') this.animatePlayer();
-    else if (this.kind === 'foe') this.animateFoe();
+    else if (this.kind === 'foe') {
+      this.animateFoe();
+      if (!frozen) this.crumble(dt);
+    }
     else if (this.kind === 'npc') this.setClip('idle', 'Idle');
     else this.animateDummy(dt);
 
@@ -327,8 +367,19 @@ export class CharacterView {
         if (state === 'windup') this.setClip(key, atk.anim, { loop: false, duration: (atk.startup * (brain.ctx?.slow ?? 1)) / 60 / IMPACT, fade: 0.15 });
         break;
       }
-      case 'cast':
-        this.setClip(`cast:${entry}`, boss ? 'Spellcast_Raise' : 'Spellcast_Shoot', { loop: false, duration: ((def.castFrames ?? 42) / 60) * 1.25, fade: 0.12 });
+      case 'cast': {
+        const clip = boss ? 'Spellcast_Raise' : /** @type {any} */ (brain).casting === 'flare' ? 'Spellcast_Summon' : 'Spellcast_Shoot';
+        this.setClip(`cast:${entry}`, clip, { loop: false, duration: ((def.castFrames ?? 42) / 60) * 1.25, fade: 0.12 });
+        break;
+      }
+      case 'dodge':
+        this.setClip(`dodge:${entry}`, brain.circleDir > 0 ? 'Dodge_Left' : 'Dodge_Right', { loop: false, duration: (def.dodgeFrames ?? 20) / 60 + 0.15, fade: 0.06 });
+        break;
+      case 'suspicious':
+        this.setClip('suspicious', 'Idle_Combat');
+        break;
+      case 'return':
+        this.setClip('return', 'Walking_A');
         break;
       case 'roar':
         this.setClip(`roar:${entry}`, 'Taunt', { loop: false, duration: def.roarFrames / 60 });
@@ -357,7 +408,8 @@ export class CharacterView {
         this.setClip(`stagger:${entry}`, 'Hit_B', { loop: false, duration: def.staggerFrames / 60 });
         break;
       case 'dead':
-        this.setClip(`dead:${entry}`, 'Death_A', { loop: false, duration: boss ? 2.2 : 1.1 });
+        // Skeletons crumble to bones (then fade, CharacterView.crumble); the Warden falls.
+        this.setClip(`dead:${entry}`, boss ? 'Death_A' : 'Death_C_Skeletons', { loop: false, duration: boss ? 2.2 : 1.1 });
         break;
       default:
         this.setClip('idle', 'Idle');

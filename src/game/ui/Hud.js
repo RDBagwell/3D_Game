@@ -7,7 +7,7 @@ import { keyLabel, keysFor } from '../settings.js';
  *     reads without relying on colour, and a pale "damage ghost" that drains
  *     after a hit so you can see how much you lost;
  *   - the lock-on reticle: four corner brackets around the target, with its
- *     name and health;
+ *     name, health, and poise (how near it is to staggering);
  *   - control hints (bottom) for the device you last touched: keyboard keys,
  *     or the right face-button names for an Xbox, PlayStation or Switch pad;
  *   - captions (bottom centre) for important sound cues;
@@ -56,7 +56,7 @@ export class Hud {
       <div class="toasts" aria-live="polite"></div>
       <div class="saved" hidden>Saved</div>
       <div class="boss" hidden role="meter" aria-label="Boss health"><div class="boss-name"></div><div class="boss-bar"><div class="boss-fill"></div><i class="boss-mark"></i></div></div>
-      <div class="reticle" hidden><i></i><i></i><i></i><i></i><div class="reticle-name"></div><div class="reticle-hp"><div></div></div></div>
+      <div class="reticle" hidden><i></i><i></i><i></i><i></i><div class="reticle-name"></div><div class="reticle-hp"><div></div></div><div class="reticle-poise"><div></div></div></div>
       <div class="banner" hidden></div>
       <div class="captions" aria-live="polite"></div>
       <div class="hints"></div>`;
@@ -77,6 +77,7 @@ export class Hud {
     this.reticle = /** @type {HTMLElement} */ (this.root.querySelector('.reticle'));
     this.reticleName = /** @type {HTMLElement} */ (this.root.querySelector('.reticle-name'));
     this.reticleHp = /** @type {HTMLElement} */ (this.root.querySelector('.reticle-hp div'));
+    this.reticlePoise = /** @type {HTMLElement} */ (this.root.querySelector('.reticle-poise div'));
     this.banner = /** @type {HTMLElement} */ (this.root.querySelector('.banner'));
     this.captions = /** @type {HTMLElement} */ (this.root.querySelector('.captions'));
     this.hints = /** @type {HTMLElement} */ (this.root.querySelector('.hints'));
@@ -218,7 +219,7 @@ export class Hud {
 
   /**
    * @param {{ x: number, y: number } | null} screen
-   * @param {{ def?: { name: string }, hp: number, maxHp: number, kind?: string } | null} target
+   * @param {{ def?: { name: string, poise?: number }, hp: number, maxHp: number, kind?: string, poise?: number } | null} target
    */
   updateReticle(screen, target) {
     if (!screen || !target) {
@@ -231,6 +232,11 @@ export class Hud {
     const showHp = target.kind !== 'dummy';
     /** @type {HTMLElement} */ (this.reticleHp.parentElement).hidden = !showHp;
     if (showHp) this.reticleHp.style.width = `${(target.hp / target.maxHp) * 100}%`;
+    // Poise: how close it is to staggering (not for the dummy, nor the unstaggerable boss).
+    const maxPoise = target.def?.poise ?? 0;
+    const showPoise = showHp && maxPoise > 0 && maxPoise < 1000 && target.poise !== undefined;
+    /** @type {HTMLElement} */ (this.reticlePoise.parentElement).hidden = !showPoise;
+    if (showPoise) this.reticlePoise.style.width = `${(Math.max(0, /** @type {number} */ (target.poise)) / maxPoise) * 100}%`;
   }
 
   /** @param {string | null} name  null hides it */

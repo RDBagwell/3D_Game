@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { Sandbox } from '../src/game/sim/Sandbox.js';
 import { CasterBrain } from '../src/game/enemies/CasterBrain.js';
 import { WardenBrain, WARDEN_TRANSITIONS } from '../src/game/enemies/WardenBrain.js';
-import { ENEMIES } from '../src/game/data/actors.js';
-import { ATTACKS, PROJECTILES } from '../src/game/data/attacks.js';
+import { ENEMIES, ENEMY_BUDGET } from '../src/game/data/actors.js';
+import { ATTACKS, PROJECTILES, HAZARDS } from '../src/game/data/attacks.js';
+import { angleDelta, yawFromDirection, DEG } from '../src/engine/index.js';
 import { fightWarden } from './helpers/bossBot.js';
 
 /**
@@ -34,8 +35,7 @@ function ctx(distance, extra = {}) {
 describe('ash adept (caster)', () => {
   it('keeps its distance: closes in from far, backs away when you rush it', () => {
     const brain = new CasterBrain('a', ENEMIES.adept);
-    brain.update(ctx(12));
-    brain.update(ctx(12));
+    for (let i = 0; i < 3 + ENEMIES.adept.suspiciousFrames; i++) brain.update(ctx(12));
     expect(brain.state).toBe('chase');
     expect(brain.intent.move).toBe('toward');
     brain.cooldown = 999;
@@ -181,4 +181,141 @@ describe('the Cinder Warden', () => {
     // ...but it's still fair: it can be won.
     expect(results.some((r) => r.won)).toBe(true);
   }, 120_000);
+});
+
+describe('enemies that fight back (in the simulation)', () => {
+  /** A sandbox with only the enemies a test adds, the hero at the origin facing +z. */
+  async function arena() {
+    const sb = await Sandbox.create({ grunts: false });
+    sb.player.body.teleport({ x: 0, y: 0, z: 0 });
+    sb.player.facing = 0;
+    return sb;
+  }
+
+  it("an adept's flare bursts under you if you stand still, but not after you roll out", async () => {
+    for (const roll of [false, true]) {
+      const sb = await arena();
+      const adept = sb.spawnFoe('adept', 'f', { x: 0, y: 0, z: 7 }, Math.PI);
+      sb.flare('flare', /** @type {any} */ (adept));
+      const events = [];
+      sb.events.on('hazardBurst', () => events.push('burst'));
+      sb.events.on('hit', (e) => e.hazard && events.push('hit'));
+      for (let i = 0; i < 90; i++) sb.step(roll && i === 10 ? { ...hold('roll'), move: { x: 1, y: 0 } } : idle);
+      expect(events[0]).toBe('burst');
+      expect(events.includes('hit')).toBe(!roll);
+      expect(sb.player.hp).toBe(roll ? sb.player.maxHp : sb.player.maxHp - HAZARDS.flare.damage);
+      sb.dispose();
+    }
+  });
+
+  it("a cindermite's leap reaches you from four metres", async () => {
+    const sb = await arena();
+    const mite = /** @type {any} */ (sb.spawnFoe('mite', 'l', { x: 0, y: 0, z: 4 }, Math.PI));
+    sb.step(idle);
+    mite.brain.aware = true;
+    mite.brain.attack = ATTACKS.miteLeap;
+    mite.brain.fsm.force('windup');
+    let hit = null;
+    sb.events.on('hit', (e) => e.target === sb.player && (hit = e.attack));
+    for (let i = 0; i < 80 && !hit; i++) sb.step(idle);
+    expect(hit).toBe(ATTACKS.miteLeap);
+    sb.dispose();
+  });
+
+  it('a wind-up past its armour point carries on through a hit', async () => {
+    const sb = await arena();
+    const grunt = /** @type {any} */ (sb.spawnFoe('grunt', 'a', { x: 0, y: 0, z: 1.8 }, Math.PI));
+    sb.step(idle);
+    grunt.brain.aware = true;
+    grunt.brain.attack = ATTACKS.gruntChop;
+    grunt.brain.fsm.force('windup');
+    for (let i = 0; i < Math.ceil(ATTACKS.gruntChop.startup * 0.7); i++) sb.step(idle);
+    let armored = false;
+    sb.events.on('hit', (e) => e.target === grunt && (armored = e.armored));
+    sb.applyHit(sb.player, ATTACKS.slash1, { target: grunt, result: 'hit', point: { ...grunt.position } });
+    expect(armored).toBe(true);
+    expect(grunt.state).toBe('windup');
+    expect(grunt.hp).toBe(grunt.maxHp - ATTACKS.slash1.damage);
+    sb.dispose();
+  });
+
+  it('steers round a wall between it and you', async () => {
+    const sb = await arena();
+    // A wall 3 m wide across the way, halfway.
+    sb.physics.addStaticBox({ x: 1.5, y: 1, z: 0.2 }, { x: 0, y: 1, z: 3 });
+    const grunt = /** @type {any} */ (sb.spawnFoe('grunt', 'w', { x: 0, y: 0, z: 6.5 }, Math.PI));
+    sb.step(idle);
+    grunt.brain.alert();
+    let frames = 0;
+    while (Math.hypot(grunt.position.x, grunt.position.z) > ENEMIES.grunt.circleDistance + 1 && frames < 360) {
+      sb.step(idle);
+      frames++;
+    }
+    expect(frames).toBeLessThan(360);
+    sb.dispose();
+  });
+
+  it('calls allies who can see it; they come though they have not seen you', async () => {
+    const sb = await arena();
+    const a = /** @type {any} */ (sb.spawnFoe('grunt', 'a', { x: 0, y: 0, z: 9 }, Math.PI)); // facing you
+    const b = /** @type {any} */ (sb.spawnFoe('grunt', 'b', { x: 4, y: 0, z: 13 }, 0)); // facing away, out of earshot
+    const alerted = [];
+    sb.events.on('alerted', (e) => alerted.push(e.foe.id));
+    for (let i = 0; i < 5; i++) sb.step(idle);
+    expect(a.brain.aware).toBe(true);
+    expect(b.brain.aware).toBe(true);
+    expect(alerted).toEqual([b.id]);
+    sb.dispose();
+  });
+
+  it('never has more than the room budget attacking at once', async () => {
+    const sb = await arena();
+    sb.player.maxHp = sb.player.hp = 1e6;
+    const foes = [
+      sb.spawnFoe('grunt', 'a', { x: -3, y: 0, z: 3 }, Math.PI),
+      sb.spawnFoe('grunt', 'b', { x: 3, y: 0, z: 3 }, Math.PI),
+      sb.spawnFoe('mite', 'c', { x: 0, y: 0, z: 4 }, Math.PI),
+      sb.spawnFoe('adept', 'd', { x: 0, y: 0, z: 8 }, Math.PI),
+    ];
+    let most = 0;
+    let swings = 0;
+    sb.events.on('swing', () => swings++);
+    for (let i = 0; i < 20 * 60; i++) {
+      sb.step(idle);
+      most = Math.max(most, sb.threatInPlay);
+      expect(sb.threatInPlay).toBeLessThanOrEqual(ENEMY_BUDGET);
+    }
+    expect(foes.every((f) => f?.brain.aware)).toBe(true);
+    expect(most).toBe(ENEMY_BUDGET); // a grunt and a mite (or two light ones) at once
+    expect(swings).toBeGreaterThan(5);
+    sb.dispose();
+  });
+});
+
+describe('senses in the Hearth Halls', () => {
+  it('the Key Vault enemies do not notice you through the closed portcullis', async () => {
+    const { Adventure } = await import('../src/game/adventure/Adventure.js');
+    const { GameState } = await import('../src/game/adventure/GameState.js');
+    const adv = new Adventure(GameState.newGame());
+    adv.state.flags.add('gate_open');
+    await adv.enter('halls', 'start');
+    const sb = adv.sandbox;
+    const vault = sb.foes.filter((f) => f.spawnName?.startsWith('vault'));
+    for (const f of sb.foes) if (!vault.includes(f)) f.hp = 0;
+    sb.player.body.teleport({ x: 0, y: 0.2, z: -26 });
+    for (let i = 0; i < 3; i++) adv.step(idle, 1 / 60);
+    // (They may have glimpsed you at the entrance before the teleport took effect.)
+    for (const f of vault) f.brain.reset();
+    // Some of them would see you, but for the gate: in range and looking your way.
+    const p = sb.player.position;
+    const inSight = vault.filter((f) => {
+      const d = Math.hypot(p.x - f.position.x, p.z - f.position.z);
+      const off = Math.abs(angleDelta(f.facing, yawFromDirection(p.x - f.position.x, p.z - f.position.z)));
+      return d <= f.def.sightRange && off <= (f.def.sightFov / 2) * DEG && d > f.def.hearRange;
+    });
+    expect(inSight.length).toBeGreaterThan(0);
+    for (let i = 0; i < 120; i++) adv.step(idle, 1 / 60);
+    expect(vault.some((f) => f.brain.aware)).toBe(false);
+    adv.dispose();
+  });
 });

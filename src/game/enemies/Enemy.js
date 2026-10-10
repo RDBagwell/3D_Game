@@ -14,6 +14,11 @@ import { WardenBrain } from './WardenBrain.js';
  * and one of three brains, so adding a type is data plus, at most, a brain.
  */
 
+/** How far ahead (metres) an enemy looks for walls when it moves. */
+const WHISKER = 1.5;
+/** The side whiskers' angle from straight ahead. */
+const WHISKER_ANGLE = 40 * DEG;
+
 /** Brains by name (ENEMIES[type].brain). */
 const BRAINS = { melee: GruntBrain, caster: CasterBrain, warden: WardenBrain };
 
@@ -89,8 +94,10 @@ export class Enemy {
   /**
    * @param {import('./GruntBrain.js').BrainContext} brainCtx
    * @param {number} dt
+   * @param {{ crowd?: { x: number, z: number }, probe?: (x: number, z: number, max: number) => number | null }} [steer]
+   *   crowd: a push away from allies that are too close; probe: distance to a wall along a direction
    */
-  update(brainCtx, dt) {
+  update(brainCtx, dt, steer = {}) {
     if (this.brain.state === 'windup' && this.brain.fsm.frames === 0) this.swingHits = new Set();
     this.brain.update(brainCtx);
     if (this.brain.newSwing) {
@@ -116,8 +123,29 @@ export class Enemy {
     } else if (intent.move === 'circle') {
       tx = toward.z * this.brain.circleDir;
       tz = -toward.x * this.brain.circleDir;
+    } else if (intent.move === 'home') {
+      const hx = this.spawn.position.x - this.position.x;
+      const hz = this.spawn.position.z - this.position.z;
+      const hl = Math.hypot(hx, hz) || 1;
+      tx = hx / hl;
+      tz = hz / hl;
+      // Walking home: its poise recovers.
+      this.poise = this.def.poise;
     }
-    if (intent.move === 'toward' || intent.move === 'away') {
+    if (intent.move !== 'none' && (tx !== 0 || tz !== 0)) {
+      // Spread out from allies that are too close, and steer round walls.
+      if (steer.crowd) {
+        tx += steer.crowd.x;
+        tz += steer.crowd.z;
+        const l = Math.hypot(tx, tz);
+        if (l > 1) {
+          tx /= l;
+          tz /= l;
+        }
+      }
+      if (steer.probe) [tx, tz] = avoidWalls(tx, tz, steer.probe);
+    }
+    if (intent.move === 'toward' || intent.move === 'away' || intent.move === 'home') {
       // Face where it walks unless it's also told to face the player.
       if (intent.face === null) this.facing = approachAngle(this.facing, yawFromDirection(tx, tz), 6 * dt);
     }
@@ -137,29 +165,36 @@ export class Enemy {
 
   /**
    * @param {{ damage: number, poise: number, knockback: { x: number, z: number } }} hit
+   * @returns {boolean}  true if it was armoured: hurt, but its wind-up carried on
    */
   takeHit(hit) {
     this.hp = Math.max(0, this.hp - hit.damage);
-    if (!this.def.heavy) {
+    const knock = () => {
+      if (this.def.heavy) return;
       this.push.x += hit.knockback.x;
       this.push.z += hit.knockback.z;
       this.velocity.x = this.velocity.z = 0;
-    }
+    };
     if (this.hp <= 0) {
+      knock();
       this.brain.onDeath();
       this.respawnTimer = this.def.respawnSeconds;
-      return;
+      return false;
     }
     this.poise -= hit.poise;
     const broken = this.poise <= 0;
     if (broken) this.poise = this.def.poise;
+    const armored = !broken && Boolean(/** @type {any} */ (this.brain).armored);
+    if (!armored) knock();
     this.brain.onHit(broken, this.hp / this.maxHp);
+    return armored;
   }
 
   /** @param {{ knockback: { x: number, z: number } }} hit */
   blockHit(hit) {
     this.push.x += hit.knockback.x * 0.5;
     this.push.z += hit.knockback.z * 0.5;
+    /** @type {any} */ (this.brain).onBlocked?.();
   }
 
   /** @param {(p: { x: number, y: number, z: number }) => void} teleport */
@@ -172,4 +207,32 @@ export class Enemy {
     this.push = { x: 0, z: 0 };
     this.brain.reset();
   }
+}
+
+/**
+ * Steer round walls: look ahead along the way it wants to go, and if a wall
+ * is close, turn towards whichever side (40° left or right) has more room,
+ * more sharply the closer the wall.
+ * @param {number} x
+ * @param {number} z
+ * @param {(x: number, z: number, max: number) => number | null} probe
+ * @returns {[number, number]}
+ */
+export function avoidWalls(x, z, probe) {
+  const len = Math.hypot(x, z);
+  if (len < 1e-6) return [x, z];
+  const dx = x / len;
+  const dz = z / len;
+  const ahead = probe(dx, dz, WHISKER);
+  if (ahead === null) return [x, z];
+  /** @param {number} a  turn by this yaw */
+  const turn = (a) => [dx * Math.cos(a) + dz * Math.sin(a), dz * Math.cos(a) - dx * Math.sin(a)];
+  const [lx, lz] = turn(WHISKER_ANGLE);
+  const [rx, rz] = turn(-WHISKER_ANGLE);
+  const left = probe(lx, lz, WHISKER) ?? WHISKER * 2;
+  const right = probe(rx, rz, WHISKER) ?? WHISKER * 2;
+  // Up to 90° off, towards the roomier side.
+  const k = Math.min(1, 1.25 - ahead / WHISKER);
+  const [sx, sz] = turn((left >= right ? 1 : -1) * k * 90 * DEG);
+  return [sx * len, sz * len];
 }

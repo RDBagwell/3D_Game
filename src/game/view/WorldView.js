@@ -1,12 +1,12 @@
 import {
   WebGLRenderer, Scene, PerspectiveCamera, HemisphereLight, DirectionalLight, Fog, CanvasTexture, SRGBColorSpace,
   ACESFilmicToneMapping, PCFShadowMap, RepeatWrapping, MeshStandardMaterial, Vector3, Mesh, PointLight, Color,
-  SphereGeometry, MeshBasicMaterial, Sprite, SpriteMaterial, AdditiveBlending,
+  SphereGeometry, MeshBasicMaterial, Sprite, SpriteMaterial, AdditiveBlending, RingGeometry, CircleGeometry, DoubleSide,
 } from 'three';
 import { Gizmos, CameraShake } from '../../engine/index.js';
 import { CharacterView } from './CharacterView.js';
 import { ObjectView } from './ObjectView.js';
-import { Particles, Floaters } from './Effects.js';
+import { Particles, Floaters, ShellOrbs } from './Effects.js';
 import { makeKnight, makeFoe, makeDummy, makeNpc } from './models.js';
 import { NPCS } from '../data/npcs.js';
 import { QUALITY } from '../data/quality.js';
@@ -66,6 +66,13 @@ export class WorldView {
     this.scene = new Scene();
     this.particles = new Particles();
     this.floaters = new Floaters(overlay);
+    this.orbs = new ShellOrbs();
+    /** An adept's flares on the ground: an outline and a filling disc each. @type {Map<string, { ring: Mesh, fill: Mesh }>} */
+    this.flares = new Map();
+    this.flareRing = new RingGeometry(0.92, 1, 40);
+    this.flareDisc = new CircleGeometry(1, 40);
+    this.flareRingMaterial = new MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: 0.9, depthWrite: false, side: DoubleSide });
+    this.flareFillMaterial = new MeshBasicMaterial({ color: 0xff5a1a, transparent: true, opacity: 0.35, depthWrite: false, side: DoubleSide });
     this.gizmos = new Gizmos();
     /** @type {Map<string, CharacterView>} */
     this.views = new Map();
@@ -120,7 +127,9 @@ export class WorldView {
     for (const v of this.objectViews) scene.add(v.root);
 
     scene.add(this.particles.object);
+    scene.add(this.orbs.object);
     scene.add(this.gizmos.object);
+    this.flares = new Map();
     this.bolts = new Map();
     this.applyQualityToScene(false);
     this.listen();
@@ -245,6 +254,20 @@ export class WorldView {
     });
     this.scene.clear();
     this.floaters.clear();
+    this.orbs.clear();
+  }
+
+  /**
+   * A beaten enemy's shells: beads that fly to the hero, then the note.
+   * @param {{ x: number, y: number, z: number }} at
+   * @param {number} amount
+   */
+  spillShells(at, amount) {
+    this.orbs.spill(at, amount, () => {
+      const p = this.sandbox.player.position;
+      this.audio.play('shells', { position: p });
+      this.floaters.add(`+${amount} shells`, { x: p.x, y: p.y + 2, z: p.z }, 'note good');
+    });
   }
 
   /**
@@ -342,6 +365,35 @@ export class WorldView {
     ev.on('summoned', (d) => {
       if (f().particles) this.particles.burst({ ...d.foe.position, y: 0.4 }, { x: 0, y: 1, z: 0 }, 20, { color: [1, 0.45, 0.15], speed: 5 });
     });
+    ev.on('hazard', (d) => {
+      const h = d.hazard;
+      const ring = new Mesh(this.flareRing, this.flareRingMaterial);
+      const fill = new Mesh(this.flareDisc, this.flareFillMaterial);
+      for (const m of [ring, fill]) {
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(h.position.x, h.position.y + 0.04, h.position.z);
+        m.scale.setScalar(h.def.radius);
+        m.renderOrder = 5;
+        this.scene.add(m);
+      }
+      this.flares.set(h.id, { ring, fill });
+      if (f().telegraph) play('flare', h.position);
+    });
+    ev.on('hazardBurst', (d) => {
+      const m = this.flares.get(d.hazard.id);
+      if (m) {
+        this.scene.remove(m.ring, m.fill);
+        this.flares.delete(d.hazard.id);
+      }
+      play('flare_burst', d.point);
+      if (f().particles) this.particles.burst({ ...d.point, y: d.point.y + 0.2 }, { x: 0, y: 1, z: 0 }, 36, { color: [1, 0.5, 0.15], speed: 6, spread: 1.6 });
+      this.shake.addTrauma(d.hazard.def.shake * 0.6);
+    });
+    ev.on('suspicious', (d) => this.floaters.add('?', { ...d.foe.position, y: d.foe.position.y + d.foe.height + 0.4 }, 'note big'));
+    ev.on('alerted', (d) => {
+      this.floaters.add('!', { ...d.foe.position, y: d.foe.position.y + d.foe.height + 0.4 }, 'note big');
+      play(d.foe.kind === 'mite' ? 'mite_noticed' : 'noticed', d.foe.position, 0.7);
+    });
     ev.on('objectHit', (d) => {
       play('switch_hit', d.point);
       if (f().particles) this.particles.burst(d.point, { x: 0, y: 1, z: 0 }, 22, { color: [1, 0.7, 0.3], speed: 6 });
@@ -380,6 +432,11 @@ export class WorldView {
       if (d.reflected) this.floaters.add('Returned!', { ...d.point, y: d.point.y + 0.5 }, 'note good');
       if (d.counter) this.floaters.add('Counter hit', { ...d.point, y: d.point.y + 0.5 }, 'note');
       if (d.weak) this.floaters.add(`Weak point! ${d.damage}`, { ...d.point, y: d.point.y + 0.5 }, 'note good');
+      if (d.armored) {
+        // It shrugs the blow off and keeps winding up: say so, so it reads as armour, not a bug.
+        play('armored', d.point);
+        this.floaters.add('Armoured!', { ...d.point, y: d.point.y + 0.5 }, 'note');
+      }
     });
     ev.on('block', (d) => {
       if (d.target?.team === 'player') this.views.get('player')?.blockFlash();
@@ -444,6 +501,22 @@ export class WorldView {
     }
     this.particles.update(dt);
     this.time += dt;
+    for (const h of sb.hazards) {
+      const m = this.flares.get(h.id);
+      if (!m) continue;
+      const t = Math.min(1, h.age / h.def.delay);
+      m.fill.scale.setScalar(h.def.radius * t);
+      /** @type {MeshBasicMaterial} */ (m.ring.material).opacity = 0.6 + 0.4 * Math.abs(Math.sin(this.time * (6 + t * 14)));
+    }
+    const hero = sb.player.position;
+    this.orbs.update(dt, { x: hero.x, y: hero.y + 1, z: hero.z });
+    for (const view of this.views.values()) {
+      if (!view.crumbleBurst) continue;
+      view.crumbleBurst = false;
+      const at = view.actor.position;
+      this.audio.play('crumble', { position: at });
+      if (feel.particles) this.particles.burst({ x: at.x, y: at.y + 0.4, z: at.z }, { x: 0, y: 1, z: 0 }, 24, { color: [0.85, 0.82, 0.74], speed: 2.5, life: 0.8, gravity: 2, spread: 1.4 });
+    }
     for (const p of sb.projectiles) {
       const ball = this.bolts.get(p.id);
       if (!ball) continue;

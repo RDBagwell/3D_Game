@@ -1,12 +1,12 @@
 import { createPhysics, Level, EventBus, InputBuffer, FollowCamera, Rng, button, yawFromDirection, approachAngle, angleDelta } from '../../engine/index.js';
 import { TICK } from '../config.js';
-import { PLAYER, ENEMIES } from '../data/actors.js';
+import { PLAYER, ENEMIES, ENEMY_BUDGET } from '../data/actors.js';
 import { Player } from '../player/Player.js';
 import { Grunt } from '../enemies/Grunt.js';
 import { Enemy } from '../enemies/Enemy.js';
 import { Dummy } from '../enemies/Dummy.js';
 import { resolveSwing, attackPhase, hitSpheresAt, sphereHitsCapsule } from '../combat/hitboxes.js';
-import { PROJECTILES } from '../data/attacks.js';
+import { PROJECTILES, HAZARDS } from '../data/attacks.js';
 import { selectTarget, switchTarget, shouldBreakLock, LOCK } from '../combat/lockOn.js';
 import { defaultFeel } from '../feel/feelSettings.js';
 import { buildArea } from '../world/buildArea.js';
@@ -45,6 +45,9 @@ import { OBJECTS, USE_RANGE, HEARTHSTONE_RANGE } from '../data/objects.js';
 
 /** How fast (radians per second) a parried bolt curves after the enemy that threw it. */
 const REFLECT_HOMING = 2.5;
+
+/** Allies closer than this (metres, between their edges) are pushed apart. */
+const CROWD_GAP = 1.1;
 
 /** Actions recorded in the input buffer. */
 const BUFFERED = ['attack', 'roll', 'useItem'];
@@ -102,11 +105,18 @@ export class Sandbox {
     this.tick = 0;
     /** Updates left in the current hit-stop freeze. */
     this.hitstop = 0;
-    /** Who holds each group's attack tokens (grunts: one at a time; cindermites: two). @type {Map<string, Set<string>>} */
+    /**
+     * Whose turn it is to attack, and what each turn costs: per pool ('room'
+     * for every enemy but the boss, ENEMY_BUDGET of threat; 'boss').
+     * @type {Map<string, Map<string, number>>}
+     */
     this.tokens = new Map();
     /** Projectiles in flight. @type {Projectile[]} */
     this.projectiles = [];
     this.projectileCount = 0;
+    /** Ground hazards waiting to burst (an adept's flare). @type {Hazard[]} */
+    this.hazards = [];
+    this.hazardCount = 0;
     /** Wind-ups take this much longer, and enemies move a little slower (the "slower enemies" assist). */
     this.enemySlow = 1;
     this.feel = feel;
@@ -305,6 +315,7 @@ export class Sandbox {
     this.physics.step();
     this.resolveCombat();
     this.updateProjectiles();
+    this.updateHazards();
     this.updateCamera(frame);
     this.level.updateTriggers('player', this.player.position, (id) => this.emit('triggerEnter', { id }), (id) => this.emit('triggerExit', { id }));
     this.updateWorld(frame);
@@ -510,22 +521,32 @@ export class Sandbox {
     const dx = p.x - foe.position.x;
     const dz = p.z - foe.position.z;
     const before = { x: foe.position.x, z: foe.position.z };
-    const token = foe.def.token ?? { group: foe.kind, max: 1 };
+    const pool = foe.def.boss ? 'boss' : 'room';
+    const budget = foe.def.boss ? 1 : ENEMY_BUDGET;
+    const threat = foe.def.threat ?? 1;
+    const distance = Math.hypot(dx, dz);
+    const home = foe.spawn.position;
+    const { crowd, crowdSide } = this.crowding(foe);
     foe.update(
       {
         see: {
-          distance: Math.hypot(dx, dz),
+          distance,
           bearing: yawFromDirection(dx, dz),
           playerAlive: this.player.alive,
           playerSwingId: this.player.swingId,
           playerAttacking: this.player.attackPhase === 'startup',
+          visible: foe.def.boss || (distance <= foe.def.loseRange + 2 && this.foeCanSee(foe)),
+          homeDistance: Math.hypot(home.x - foe.position.x, home.z - foe.position.z),
+          crowdSide,
         },
         facing: foe.facing,
         random: () => this.rng.next(),
-        requestToken: (id) => this.takeToken(token.group, token.max, id),
-        releaseToken: (id) => this.tokens.get(token.group)?.delete(id),
+        requestToken: (id) => this.takeToken(pool, budget, id, threat),
+        releaseToken: (id) => this.tokens.get(pool)?.delete(id),
         emit: (name, data) => this.emit(name, { ...data, grunt: foe, foe }),
         slow: this.enemySlow,
+        alert: () => this.alertAllies(foe),
+        flare: (kind) => this.flare(kind, foe),
         shoot: (projectile, yaw, spread = [0]) => {
           for (const off of spread) this.shoot(projectile, foe, yaw + off);
         },
@@ -540,6 +561,13 @@ export class Sandbox {
         },
       },
       TICK,
+      {
+        crowd,
+        probe: (x, z, max) => {
+          const t = this.physics.rayDistance({ x: foe.position.x, y: foe.position.y + 0.5, z: foe.position.z }, { x, y: 0, z }, max + foe.radius);
+          return t === null ? null : Math.max(0, t - foe.radius);
+        },
+      },
     );
     // Enemy footsteps, so you can hear them coming.
     const moved = Math.hypot(foe.position.x - before.x, foe.position.z - before.z);
@@ -553,24 +581,98 @@ export class Sandbox {
   }
 
   /**
+   * Take a turn to attack, if the pool's budget has room for this enemy's threat.
    * @private
-   * @param {string} group
-   * @param {number} max
+   * @param {string} pool
+   * @param {number} budget
    * @param {string} id
+   * @param {number} threat
    */
-  takeToken(group, max, id) {
-    let holders = this.tokens.get(group);
-    if (!holders) this.tokens.set(group, (holders = new Set()));
+  takeToken(pool, budget, id, threat) {
+    let holders = this.tokens.get(pool);
+    if (!holders) this.tokens.set(pool, (holders = new Map()));
     if (holders.has(id)) return true;
-    if (holders.size >= max) return false;
-    holders.add(id);
+    let used = 0;
+    for (const t of holders.values()) used += t;
+    if (used + threat > budget) return false;
+    holders.set(id, threat);
     return true;
   }
 
-  /** Which grunt holds the attack token (session 1's single token), or null. */
-  get attackToken() {
-    const holders = this.tokens.get('grunt');
-    return holders && holders.size > 0 ? [...holders][0] : null;
+  /** How much threat is attacking right now (the room's pool). */
+  get threatInPlay() {
+    let used = 0;
+    for (const t of this.tokens.get('room')?.values() ?? []) used += t;
+    return used;
+  }
+
+  /**
+   * Nothing solid between an enemy's eyes and the hero's chest.
+   * @param {Enemy} foe
+   */
+  foeCanSee(foe) {
+    const p = this.player.position;
+    return this.lineClear({ x: foe.position.x, y: foe.position.y + foe.height * 0.85, z: foe.position.z }, { x: p.x, y: p.y + 1.1, z: p.z });
+  }
+
+  /**
+   * @param {{ x: number, y: number, z: number }} from
+   * @param {{ x: number, y: number, z: number }} to
+   */
+  lineClear(from, to) {
+    const d = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z);
+    if (d < 0.5) return true;
+    const dir = { x: (to.x - from.x) / d, y: (to.y - from.y) / d, z: (to.z - from.z) / d };
+    return this.physics.rayDistance(from, dir, d - 0.3) === null;
+  }
+
+  /**
+   * An enemy has seen the hero: allies near it that can see it come too.
+   * @param {Enemy} caller
+   */
+  alertAllies(caller) {
+    const c = caller.position;
+    for (const ally of this.foes) {
+      if (ally === caller || !ally.alive || ally.def.boss) continue;
+      if (Math.hypot(ally.position.x - c.x, ally.position.z - c.z) > (ally.def.alertRadius ?? 0)) continue;
+      if (!this.lineClear({ x: c.x, y: c.y + 1.2, z: c.z }, { x: ally.position.x, y: ally.position.y + 1.2, z: ally.position.z })) continue;
+      if (/** @type {any} */ (ally.brain).alert?.()) this.emit('alerted', { foe: ally, by: caller });
+    }
+  }
+
+  /**
+   * Allies too close: a push away from them, and which way to circle the
+   * hero to spread out (away from the nearest).
+   * @param {Enemy} foe
+   * @returns {{ crowd: { x: number, z: number } | undefined, crowdSide: number }}
+   */
+  crowding(foe) {
+    let x = 0;
+    let z = 0;
+    let nearest = Infinity;
+    let side = 0;
+    const p = this.player.position;
+    const tx = p.z - foe.position.z; // the circling direction for circleDir = 1
+    const tz = -(p.x - foe.position.x);
+    for (const other of this.foes) {
+      if (other === foe || !other.alive || other.def.boss) continue;
+      const ox = foe.position.x - other.position.x;
+      const oz = foe.position.z - other.position.z;
+      const d = Math.hypot(ox, oz);
+      const gap = foe.radius + other.radius + CROWD_GAP;
+      if (d >= gap * 2.2) continue;
+      if (d < gap && d > 1e-4) {
+        const k = (1 - d / gap) * 1.5;
+        x += (ox / d) * k;
+        z += (oz / d) * k;
+      }
+      if (d < nearest) {
+        nearest = d;
+        // Circling with circleDir 1 heads towards it? Then go the other way.
+        side = -ox * tx - oz * tz > 0 ? -1 : 1;
+      }
+    }
+    return { crowd: x || z ? { x, z } : undefined, crowdSide: side };
   }
 
   // ------------------------------------------------------------------ projectiles
@@ -690,6 +792,48 @@ export class Sandbox {
   endProjectile(p, reason) {
     p.ended = true;
     this.emit('projectileEnd', { projectile: p, reason, point: { ...p.position } });
+  }
+
+  /**
+   * An adept's flare: a ring under the hero that bursts after a moment.
+   * @param {string} kind  a key of HAZARDS
+   * @param {Enemy} owner
+   */
+  flare(kind, owner) {
+    const def = HAZARDS[kind];
+    if (!def) return;
+    const p = this.player.position;
+    /** @type {Hazard} */
+    const h = { id: `hazard_${++this.hazardCount}`, kind, def, owner, position: { x: p.x, y: p.y, z: p.z }, age: 0 };
+    this.hazards.push(h);
+    this.emit('hazard', { hazard: h });
+  }
+
+  /** @private Hazards count down, then burst: anyone inside is hurt (no shield helps). */
+  updateHazards() {
+    if (this.hazards.length === 0) return;
+    const player = this.player;
+    for (const h of this.hazards) {
+      if (++h.age < h.def.delay) continue;
+      h.ended = true;
+      this.emit('hazardBurst', { hazard: h, point: { ...h.position } });
+      const dx = player.position.x - h.position.x;
+      const dz = player.position.z - h.position.z;
+      const d = Math.hypot(dx, dz);
+      if (!player.alive || d > h.def.radius + player.radius || Math.abs(player.position.y - h.position.y) > 1.5) continue;
+      const dir = d > 1e-3 ? { x: dx / d, y: 0, z: dz / d } : { x: 0, y: 0, z: 1 };
+      const base = { attacker: h.owner, target: player, attack: h.def, point: { ...player.position }, direction: dir, hazard: h };
+      if (player.isInvulnerable()) {
+        this.emit('dodge', base);
+        continue;
+      }
+      const force = h.def.knockback * Number(this.feel.knockbackScale);
+      const damage = Math.max(1, Math.round(h.def.damage * this.damageTaken));
+      player.takeHit({ damage, knockback: { x: dir.x * force, z: dir.z * force }, hitstun: h.def.hitstun, knockdown: false });
+      this.hitstop = Math.max(this.hitstop, Math.round(h.def.hitstop * Number(this.feel.hitstopScale)));
+      this.emit('hit', { ...base, damage, killed: !player.alive, counter: false });
+    }
+    this.hazards = this.hazards.filter((h) => !h.ended);
   }
 
   // ------------------------------------------------------------------ people, objects and exits
@@ -827,10 +971,11 @@ export class Sandbox {
       if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
       if (target instanceof Enemy) damage = Math.max(1, Math.round(damage * target.brain.damageTaken));
       if (target instanceof Player) damage = Math.max(1, Math.round(damage * this.damageTaken));
-      target.takeHit({ damage, poise: guardBroken ? 999 : attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter });
+      // Late in an enemy's wind-up, a hit that doesn't break its poise doesn't stop it.
+      const armored = target.takeHit({ damage, poise: guardBroken ? 999 : attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter }) === true;
       this.hitstop = Math.max(this.hitstop, Math.round(attack.hitstop * Number(this.feel.hitstopScale)));
       const weak = target instanceof Enemy && target.brain.damageTaken > 1;
-      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter, weak, guardBroken });
+      this.emit('hit', { ...base, damage, killed: wasAlive && !target.alive, counter, weak, guardBroken, armored });
       if (wasAlive && !target.alive && target instanceof Enemy) this.onKilled(target);
     } else if (result.result === 'blocked' && target instanceof Player && target.parrying && attacker instanceof Enemy) {
       // Parried: the attacker is thrown off balance (a poise break) and the
@@ -974,6 +1119,17 @@ export class Sandbox {
  * @property {number} age  seconds
  * @property {boolean} dodged  already rolled through once
  * @property {boolean} [reflected]  parried: it now flies back and hits enemies
+ * @property {boolean} [ended]
+ */
+
+/**
+ * @typedef {object} Hazard
+ * @property {string} id
+ * @property {string} kind
+ * @property {import('../data/attacks.js').HazardDef} def
+ * @property {Enemy} owner
+ * @property {{ x: number, y: number, z: number }} position
+ * @property {number} age  frames
  * @property {boolean} [ended]
  */
 
