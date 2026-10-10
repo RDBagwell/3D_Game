@@ -1,0 +1,11 @@
+{
+  "$comment": "A lore tablet in the Key Vault.",
+  "speaker": "",
+  "start": "read",
+  "nodes": {
+    "read": {
+      "text": "\"We built the Warden from the Hearth's own ash, to tend the fire when we slept. Should the fire die, it will guard the cold as fiercely as it kept the warmth. Strike where its heart shows.\"",
+      "end": true
+    }
+  }
+}

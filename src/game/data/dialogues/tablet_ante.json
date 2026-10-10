@@ -1,0 +1,11 @@
+{
+  "$comment": "A lore tablet in the antechamber.",
+  "speaker": "",
+  "start": "read",
+  "nodes": {
+    "read": {
+      "text": "The last tablet is newer than the others. \"Ina, if you are reading this: I went down to see why it dimmed. Don't follow me. Keep the gate shut.\" It isn't signed.",
+      "end": true
+    }
+  }
+}

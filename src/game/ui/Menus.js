@@ -432,6 +432,7 @@ export class Menus {
           <label class="row check"><input type="checkbox" name="reducedMotion"> Reduced motion <small>(no camera shake or nudges, softer flashes)</small></label>
           <label class="row check"><input type="checkbox" name="captions"> Captions for sound cues</label>
           <label class="row check"><input type="checkbox" name="hints"> Show control hints</label>
+          <label class="row check"><input type="checkbox" name="objective"> Show the current objective <small>(under the health bar)</small></label>
         </fieldset>
         <fieldset><legend>Graphics</legend>
           <label class="row">Quality

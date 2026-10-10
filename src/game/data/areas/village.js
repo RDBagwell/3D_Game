@@ -150,6 +150,12 @@ export const village = {
   objects: [
     { id: 'hearth_gate', at: [0, 0, -34.2] },
     { id: 'satchel', at: [22.8, 0, -15.6], yaw: 0.7 },
+    // A signpost where the dock meets the shore, a hearthstone by the ring
+    // (fall in the trial and you're back here, not at the dock), crates.
+    { id: 'sign_dock', at: [2.7, 0, 30.2], yaw: Math.PI },
+    { id: 'hearthstone_ring', at: [-11.8, 0, -17.5] },
+    { id: 'crate_square', at: [-6.5, 0, 9.5], yaw: 0.4 },
+    { id: 'crate_tavern', at: [10.2, 0, -8.6], yaw: 1.1 },
   ],
   exits: [{ to: 'halls', spawn: 'start', at: [0, 1.5, -39.5], size: [4, 3, 2], behind: 'hearth_gate' }],
   triggers: [{ id: 'ring', at: [-20, 1.5, -14], size: [13, 3, 13] }],

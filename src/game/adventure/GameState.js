@@ -28,6 +28,8 @@ export class GameState {
     this.position = null;
     /** Enemies beaten for good, as "area:name" (an area's `enemies` entry). @type {Set<string>} */
     this.defeated = new Set();
+    /** Breakables already smashed for their shells, as "area:id" (they stay smashed). @type {Set<string>} */
+    this.looted = new Set();
   }
 
   /** A fresh playthrough: the crate you're delivering, a tonic and a few shells. */
@@ -46,6 +48,7 @@ export class GameState {
       checkpoint: { ...this.checkpoint },
       flags: [...this.flags].sort(),
       defeated: [...this.defeated].sort(),
+      looted: [...this.looted].sort(),
       items: Object.fromEntries([...this.items].filter(([, n]) => n > 0)),
       shells: this.shells,
       questStages: { ...this.questStages },
@@ -64,6 +67,7 @@ export class GameState {
     state.checkpoint = { ...data.checkpoint };
     state.flags = new Set(data.flags);
     state.defeated = new Set(data.defeated);
+    state.looted = new Set(data.looted);
     state.items = new Map(Object.entries(data.items));
     state.shells = data.shells;
     state.questStages = { ...data.questStages };

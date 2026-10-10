@@ -309,6 +309,7 @@ export class Game {
     const adventure = new Adventure(state, { feel: () => this.feel, models: this.models });
     this.adventure = adventure;
     this.view.checkpointObject = () => this.checkpointObject();
+    this.view.celebrating = () => adventure.state.flags.has('hearth_lit');
     adventure.events.on('travel', (e) => void this.travel(e.area, e.spawn));
     adventure.events.on('died', () => {
       this.reviveTimer = 2.6;
@@ -321,6 +322,12 @@ export class Game {
     });
     adventure.events.on('notice', (e) => this.hud.toast('', e.text, 'notice'));
     adventure.events.on('banner', (e) => this.hud.showBanner(e.text, 3));
+    // A villager speaking up as you pass: a line over their head, and a caption.
+    adventure.events.on('bark', (e) => {
+      this.view.floaters.add(e.text, { x: e.position.x, y: e.position.y + 2.3, z: e.position.z }, 'bark', { life: 3.2, rise: 0.05 });
+      if (settings.values.captions) this.hud.caption(`${e.name}: ${e.text}`);
+      this.view.views.get(e.id)?.gesture();
+    });
     adventure.events.on('switched', () => this.hud.showBanner('Somewhere ahead, a gate grinds open.', 2.5));
     adventure.events.on('dialogue', (e) => this.startTalk(e.id, e.npc));
     adventure.events.on('quest', (q) => {
@@ -521,6 +528,12 @@ export class Game {
     return { message, view: this.shopView(shopId) };
   }
 
+  /** The current objective: the main quest's stage, else the next unfinished quest's (null if none). */
+  objectiveText() {
+    const open = this.questLog().find((q) => !q.done);
+    return open ? open.text : null;
+  }
+
   /** The quest log: started quests, main first. */
   questLog() {
     const state = this.adventure?.state;
@@ -553,6 +566,7 @@ export class Game {
     this.adventure?.dispose();
     this.adventure = null;
     this.view.checkpointObject = () => null;
+    this.view.celebrating = () => false;
     await this.useSandbox(await Sandbox.create({ area: 'training', models: this.models, feel: this.feel }));
     this.play();
     this.lab.open();
@@ -566,6 +580,7 @@ export class Game {
       this.adventure?.dispose();
       this.adventure = null;
       this.view.checkpointObject = () => null;
+    this.view.celebrating = () => false;
       void Sandbox.create({ area: 'village', models: this.models, feel: this.feel, grunts: false }).then((sb) => this.useSandbox(sb));
     }
     this.mode = 'title';
@@ -800,6 +815,7 @@ export class Game {
     this.hud.updateBoss(boss && boss.brain.aware ? /** @type {any} */ (boss) : null);
     const device = { device: this.input.lastDevice, padStyle: this.input.gamepadStyle, keys: settings.values.keys, bindings: this.input.bindings };
     this.hud.updateHints({ ...device, enabled: settings.values.hints && this.mode !== 'talk' });
+    this.hud.updateObjective(settings.values.objective && this.mode === 'play' ? this.objectiveText() : null);
     const state = this.adventure?.state;
     this.hud.updateInventory(state ? { shells: state.shells, tonics: state.itemCount('tonic') } : null, glyphFor('useItem', device));
     this.hud.updatePrompt(this.mode === 'play' ? this.promptLabel() : null, glyphFor('interact', device));

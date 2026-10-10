@@ -1,0 +1,11 @@
+{
+  "$comment": "A lore tablet in the Switch Hall.",
+  "speaker": "",
+  "start": "read",
+  "nodes": {
+    "read": {
+      "text": "A keeper's note, carved small: \"The crystal remembers the blade. Strike it, and the bars will rise for anyone who carries the Hearth's errand.\"",
+      "end": true
+    }
+  }
+}

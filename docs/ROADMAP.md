@@ -94,20 +94,41 @@ pull request with its own tests. Phases run in order; each builds on the last.
   on Polished at every reaction timing, and Raw stays harder. The table is in
   GAME-FEEL.md.
 
-## Phase 6: a world worth exploring
+## Phase 6: a world worth exploring (done, except the items listed as not done)
 
-- The current objective shown on screen. A signpost, a hearthstone by the
-  training ring, and a clearer path to Wren's satchel.
-- When a gate opens, the camera shows it rising.
-- **Optional content:** side rooms with chests in the Hearth Halls,
-  breakable pots, lore tablets, and a third upgrade.
-- **Bram's shop:** stocks things worth buying, and a commission after the
-  ending.
-- **Villagers:** idle, sit, comment when you pass, and show a "!" when they
-  have something new to say.
-- **After the ending:** the village celebrates, with lamps, forge fire and
-  wisps.
-- **Atmosphere:** ambient wisps, a moving sea, torch embers.
+**Done:**
+- **Guidance:**
+  - the current objective under the health bar (Settings can hide it);
+  - banners queue instead of overwriting each other;
+  - a signpost at the dock;
+  - a hearthstone by the training ring, so falling in the trial brings you
+    back there.
+- **Gates:** when a portcullis opens, its bars rise out of sight.
+- **Optional content:**
+  - two extra chests in the Hearth Halls (the Switch Hall and the
+    antechamber);
+  - four lore tablets;
+  - crates and barrels your sword smashes for a few shells, once each
+    (remembered in saves, v4).
+- **Bram's shop:** the Ember Plate, a third upgrade (70 shells; you take a
+  fifth less damage).
+- **Villagers:** they say a line as you pass, which changes with the story,
+  and make small gestures now and then.
+- **After the ending:** lanterns round the square, and many bright wisps.
+- **Atmosphere:** drifting wisps in the village (faint before the ending),
+  embers from the Halls' torches, gulls over the shore.
+
+**Not done:**
+- **Gates:** a camera shot that shows the gate opening.
+- **The Halls:** side rooms (the extra chests sit in existing rooms instead).
+- **Wren's satchel:** a clearer route to it.
+- **Villagers:**
+  - they don't sit;
+  - no "!" over a villager with something new to say.
+- **The ending:** Ina doesn't stand at the Hearth; no forge-fire change.
+- **Bram:** a commission after the ending.
+- **The sea:** it doesn't move.
+- **Dialogue box:** none of the changes.
 
 ## Decisions (defaults until Robert says otherwise)
 

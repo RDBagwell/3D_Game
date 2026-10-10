@@ -1,0 +1,11 @@
+{
+  "$comment": "The signpost at the end of the dock: points new arrivals the right way.",
+  "speaker": "",
+  "start": "read",
+  "nodes": {
+    "read": {
+      "text": "A weathered signpost, freshly painted where the arrows are. ↑ CINDER COVE: the square, the forge, the Hearth gate (ask for Elder Ina). ← The training ring. → The shore.",
+      "end": true
+    }
+  }
+}

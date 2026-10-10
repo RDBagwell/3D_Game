@@ -91,6 +91,17 @@ export const halls = {
     { id: 'vault_door', at: [0, 0, -49.5], behind: 'hall_gate' },
     { id: 'hearthstone_ante', at: [2.4, 0, -59.5], behind: 'vault_door' },
     { id: 'hearth', at: [0, 0.3, -96], behind: 'vault_door' },
+    // Off the main path: lore, a couple of chests, barrels to smash.
+    { id: 'tablet_steps', at: [-4, 0, 1.5], yaw: Math.PI / 2 },
+    { id: 'barrel_steps', at: [3.4, 0, -6.4] },
+    { id: 'tablet_switch', at: [10, 0, -25.5], yaw: -Math.PI / 2 },
+    { id: 'switch_chest', at: [-9.4, 0, -26.6], yaw: Math.PI / 2 },
+    { id: 'barrel_switch_a', at: [-9.4, 0, -15.6] },
+    { id: 'barrel_switch_b', at: [9.4, 0, -14.8] },
+    { id: 'tablet_vault', at: [7, 0, -38.5], yaw: -Math.PI / 2, behind: 'hall_gate' },
+    { id: 'barrel_vault', at: [6.4, 0, -45], behind: 'hall_gate' },
+    { id: 'ante_chest', at: [-3.5, 0, -57.6], yaw: Math.PI / 2, behind: 'vault_door' },
+    { id: 'tablet_ante', at: [-4, 0, -60.4], yaw: Math.PI / 2, behind: 'vault_door' },
     // The arena's pillars: cover from the Warden, but its slams smash them.
     { id: 'arena_pillar_nw', at: [-8, 0, -78], behind: 'vault_door' },
     { id: 'arena_pillar_ne', at: [8, 0, -78], behind: 'vault_door' },

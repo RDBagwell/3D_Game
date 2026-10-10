@@ -1,0 +1,11 @@
+{
+  "$comment": "A lore tablet in the Ash Steps.",
+  "speaker": "",
+  "start": "read",
+  "nodes": {
+    "read": {
+      "text": "Words cut into the stone, worn soft by hands: \"Feed the Hearth, and the wisps are born. Let it go cold, and the cold walks.\" Someone has scratched a tally of years beneath it. The last mark is fresh.",
+      "end": true
+    }
+  }
+}

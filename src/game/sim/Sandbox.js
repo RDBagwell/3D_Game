@@ -11,7 +11,7 @@ import { selectTarget, switchTarget, shouldBreakLock, LOCK } from '../combat/loc
 import { defaultFeel } from '../feel/feelSettings.js';
 import { buildArea } from '../world/buildArea.js';
 import { AREAS } from '../data/areas/index.js';
-import { NPCS, TALK_RANGE } from '../data/npcs.js';
+import { NPCS, TALK_RANGE, BARK } from '../data/npcs.js';
 import { OBJECTS, USE_RANGE, HEARTHSTONE_RANGE } from '../data/objects.js';
 
 /**
@@ -159,7 +159,7 @@ export class Sandbox {
       .filter((p) => Object.hasOwn(NPCS, p.id))
       .map((p) => {
         physics.addStaticBox({ x: 0.3, y: 0.85, z: 0.3 }, { x: p.position.x, y: p.position.y + 0.85, z: p.position.z });
-        return { id: p.id, kind: 'npc', position: { x: p.position.x, y: p.position.y, z: p.position.z }, facing: p.yaw, homeYaw: p.yaw, talking: false, hidden: false };
+        return { id: p.id, kind: 'npc', position: { x: p.position.x, y: p.position.y, z: p.position.z }, facing: p.yaw, homeYaw: p.yaw, talking: false, hidden: false, near: false, barkAt: -Infinity };
       });
 
     /**
@@ -339,7 +339,7 @@ export class Sandbox {
     const back = this.safeGround ?? this.playerSpawn.position;
     p.body.teleport?.({ x: back.x, y: back.y + 0.1, z: back.z });
     p.velocity.x = p.velocity.z = 0;
-    p.hp = Math.max(1, p.hp - Math.round(PLAYER.fall.fallOutDamage * this.damageTaken));
+    p.hp = Math.max(1, p.hp - Math.round(PLAYER.fall.fallOutDamage * this.hurtScale));
     p.fsm.force('idle');
     this.camera.reset(p.position, p.facing);
     this.emit('fellOut', { who: p });
@@ -583,6 +583,11 @@ export class Sandbox {
     }
   }
 
+  /** How much of an enemy's damage the hero takes: the difficulty assist times their armour (Ember Plate). */
+  get hurtScale() {
+    return this.damageTaken * this.player.armor;
+  }
+
   /**
    * Take a turn to attack, if the pool's budget has room for this enemy's threat.
    * @private
@@ -774,7 +779,7 @@ export class Sandbox {
           continue;
         } else {
           const counter = false; // bolts and embers are never counter hits
-          const damage = Math.max(1, Math.round(def.damage * this.damageTaken));
+          const damage = Math.max(1, Math.round(def.damage * this.hurtScale));
           player.takeHit({ damage, knockback, hitstun: def.hitstun, knockdown: counter });
           this.hitstop = Math.max(this.hitstop, Math.round(def.hitstop * Number(this.feel.hitstopScale)));
           this.emit('hit', { ...base, damage, killed: !player.alive, counter });
@@ -859,7 +864,7 @@ export class Sandbox {
         continue;
       }
       const force = h.def.knockback * Number(this.feel.knockbackScale);
-      const damage = Math.max(1, Math.round(h.def.damage * this.damageTaken));
+      const damage = Math.max(1, Math.round(h.def.damage * this.hurtScale));
       player.takeHit({ damage, knockback: { x: dir.x * force, z: dir.z * force }, hitstun: h.def.hitstun, knockdown: false });
       this.hitstop = Math.max(this.hitstop, Math.round(h.def.hitstop * Number(this.feel.hitstopScale)));
       this.emit('hit', { ...base, damage, killed: !player.alive, counter: false });
@@ -870,10 +875,20 @@ export class Sandbox {
 
   // ------------------------------------------------------------------ people, objects and exits
 
-  /** @private NPCs turn towards the player while talking, and back again after. */
+  /**
+   * @private NPCs turn towards the player while talking, and back again after.
+   * Passing close by, they speak up ('npcNear'; the adventure picks the line),
+   * then not again for a while.
+   */
   updateNpcs() {
     const p = this.player.position;
     for (const npc of this.npcs) {
+      const near = !npc.hidden && this.player.alive && Math.hypot(p.x - npc.position.x, p.z - npc.position.z) <= BARK.range;
+      if (near && !npc.near && !npc.talking && this.tick - npc.barkAt >= BARK.again / TICK) {
+        npc.barkAt = this.tick;
+        this.emit('npcNear', { id: npc.id, position: { ...npc.position } });
+      }
+      npc.near = near;
       const want = npc.talking ? yawFromDirection(p.x - npc.position.x, p.z - npc.position.z) : npc.homeYaw;
       npc.facing = approachAngle(npc.facing, want, 5 * TICK);
     }
@@ -987,6 +1002,17 @@ export class Sandbox {
     if (!player.fsm.is('attack') || !player.attack || player.attackFrameNow < 0) return;
     const spheres = hitSpheresAt(player.attack, player.attackFrameNow, player.position, player.facing);
     for (const o of this.objects) {
+      // A pot or barrel: the sword smashes it.
+      if (o.type === 'breakable' && !o.open && !o.hidden && OBJECTS[o.id].fragile) {
+        const [, h] = OBJECTS[o.id].solid ?? [1, 1, 1];
+        const c = { x: o.position.x, y: o.position.y + h / 2, z: o.position.z };
+        if (spheres.some((s) => Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z) <= s.r + 0.55)) {
+          this.setObject(o.id, { open: true });
+          this.hitstop = Math.max(this.hitstop, Math.round(3 * Number(this.feel.hitstopScale)));
+          this.emit('objectBroken', { id: o.id, point: c, by: 'sword' });
+        }
+        continue;
+      }
       if (o.type !== 'switch' || o.hidden || player.swingHits.has(o.id)) continue;
       const c = { x: o.position.x, y: o.position.y + 1.1, z: o.position.z };
       if (spheres.some((s) => Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z) <= s.r + 0.6)) {
@@ -1023,7 +1049,7 @@ export class Sandbox {
       let damage = attack.damage;
       if (attacker instanceof Player) damage = Math.round(damage * attacker.damageScale);
       if (target instanceof Enemy) damage = Math.max(1, Math.round(damage * target.brain.damageTaken));
-      if (target instanceof Player) damage = Math.max(1, Math.round(damage * this.damageTaken));
+      if (target instanceof Player) damage = Math.max(1, Math.round(damage * this.hurtScale));
       // Late in an enemy's wind-up, a hit that doesn't break its poise doesn't stop it.
       const armored = target.takeHit({ damage, poise: guardBroken ? 999 : attack.poise, knockback, hitstun: attack.hitstun, knockdown: attack.knockdown || counter }) === true;
       this.hitstop = Math.max(this.hitstop, Math.round(attack.hitstop * Number(this.feel.hitstopScale)));
@@ -1041,7 +1067,7 @@ export class Sandbox {
       // Blocking isn't free for the hero: a little chip damage, never the last point.
       let chip = 0;
       if (target instanceof Player) {
-        chip = Math.min(target.hp - 1, Math.max(1, Math.round(attack.damage * PLAYER.blockChip * this.damageTaken)));
+        chip = Math.min(target.hp - 1, Math.max(1, Math.round(attack.damage * PLAYER.blockChip * this.hurtScale)));
         if (chip > 0) target.hp -= chip;
       }
       this.hitstop = Math.max(this.hitstop, Math.round(2 * Number(this.feel.hitstopScale)));
@@ -1142,6 +1168,8 @@ export class Sandbox {
  * @property {number} homeYaw
  * @property {boolean} talking
  * @property {boolean} hidden
+ * @property {boolean} near  the hero is within BARK.range
+ * @property {number} barkAt  the tick it last spoke up
  */
 
 /**

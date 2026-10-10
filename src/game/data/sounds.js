@@ -415,7 +415,19 @@ export const SURFACES = ['grass', 'dirt', 'stone', 'wood', 'sand'];
 export const AMBIENCE = {
   shore: (ctx, out) => {
     const stops = [swell(ctx, out, { filter: 'lowpass', freq: 520, rate: 0.11, depth: 0.8, level: 0.55 }), swell(ctx, out, { filter: 'highpass', freq: 3500, rate: 0.05, depth: 0.5, level: 0.08 })];
-    return () => stops.forEach((s) => s());
+    // A gull now and then: two or three falling cries.
+    const gull = () => {
+      const t = ctx.currentTime;
+      const cries = 2 + Math.floor(Math.random() * 2);
+      const pitch = 1500 + Math.random() * 500;
+      for (let i = 0; i < cries; i++) tone(ctx, out, t + i * 0.22, { type: 'triangle', from: pitch, to: pitch * 0.62, duration: 0.17, volume: 0.035, attack: 0.02 });
+      timer = setTimeout(gull, 6000 + Math.random() * 9000);
+    };
+    let timer = setTimeout(gull, 3000);
+    return () => {
+      clearTimeout(timer);
+      stops.forEach((s) => s());
+    };
   },
   meadow: (ctx, out) => swell(ctx, out, { filter: 'bandpass', freq: 700, rate: 0.07, depth: 0.7, level: 0.25, q: 0.7 }),
   halls: (ctx, out) => {

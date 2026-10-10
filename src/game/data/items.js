@@ -5,17 +5,18 @@
  *   name, description
  *   type     'consumable'  used from the quick slot (Use item); `heal` HP
  *            'upgrade'     always on while you carry it: `maxHp` more health,
- *                          `damage` multiplies your sword's damage
+ *                          `damage` multiplies your sword's damage, `guard`
+ *                          multiplies the damage you take (0.8: a fifth less)
  *            'key'         for doors, quests and dialogue conditions
  *   stack    most you can carry
- *   price    in shells, for shops (consumables only)
+ *   price    in shells, for shops
  *
  * Items are given and taken by effects ({ "giveItem": "tonic" }) and checked
  * by conditions ({ "hasItem": "hearth_key" }); the validator rejects any
  * item id that isn't here.
  */
 
-/** @typedef {{ name: string, description: string, type: 'consumable' | 'upgrade' | 'key', stack: number, price?: number, heal?: number, maxHp?: number, damage?: number }} ItemDef */
+/** @typedef {{ name: string, description: string, type: 'consumable' | 'upgrade' | 'key', stack: number, price?: number, heal?: number, maxHp?: number, damage?: number, guard?: number }} ItemDef */
 
 /** @type {Record<string, ItemDef>} */
 export const ITEMS = {
@@ -40,6 +41,14 @@ export const ITEMS = {
     type: 'upgrade',
     stack: 1,
     damage: 1.4,
+  },
+  ember_plate: {
+    name: 'Ember Plate',
+    description: 'Bram\'s work: iron scales quenched in Hearth ash. You take a fifth less damage.',
+    type: 'upgrade',
+    stack: 1,
+    price: 70,
+    guard: 0.8,
   },
   lamp_crate: {
     name: 'Crate of Lamp-stones',

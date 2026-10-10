@@ -1,0 +1,23 @@
+{
+  "$comment": "An optional chest in the antechamber, before the Warden.",
+  "speaker": "",
+  "start": "open",
+  "nodes": {
+    "open": {
+      "text": "Supplies, left by whoever came down before you: two tonics, still warm, and a few shells.",
+      "effects": [
+        {
+          "setFlag": "ante_chest_opened"
+        },
+        {
+          "giveItem": "tonic",
+          "count": 2
+        },
+        {
+          "giveShells": 10
+        }
+      ],
+      "end": true
+    }
+  }
+}
