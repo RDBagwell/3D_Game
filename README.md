@@ -102,13 +102,8 @@ from the RPG, so a dialogue file moves between the two games; each ported
 file says so. [docs/CONTENT.md](docs/CONTENT.md) lists the differences.
 
 **Then and now.** The tag [`v1-original`](https://github.com/RDBagwell/3D_Game/tree/v1-original)
-is the 2024 prototype this grew from: a character walking around Blender
-test levels, with a hand-rolled game loop. Third-party models, textures and
-sounds in it were removed or replaced with CC0 assets (see
+Emberwake started in 2024 as a Zelda-inspired prototype: a hero with a sword and shield walking around my own Blender test levels, using sounds and UI art borrowed from Zelda while I learned Three.js and Rapier. For the rebuild I replaced every borrowed asset with CC0 art and sound synthesised in the browser, built an original world and story, and kept the code ideas that worked.(see
 [ASSETS.md](ASSETS.md)); Robert's own Blender files are kept in `art/`.
-
-TODO(Robert): a note in your own words on what you built in 2024 and what
-you'd say about the jump to this.
 
 ## Make your own content
 
