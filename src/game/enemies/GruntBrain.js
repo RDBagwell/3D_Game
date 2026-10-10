@@ -72,6 +72,8 @@ export const GRUNT_TRANSITIONS = {
  * @property {(projectile: string, yaw: number, spread?: number[]) => void} [shoot]  throw projectiles (casters, the boss)
  * @property {(type: string, marker: string) => void} [summon]  call an enemy to a marker (the boss)
  * @property {(hazard: string) => void} [flare]  set a ground hazard under the player (adepts)
+ * @property {(line: { hazard: string, from: number, step: number, count: number, stagger: number }, yaw: number) => void} [fissure]
+ *   a line of ground hazards along a yaw, bursting one after another (the boss)
  * @property {() => void} [alert]  tell allies nearby that it has seen the player
  */
 

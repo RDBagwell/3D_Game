@@ -5,8 +5,9 @@ import { ITEMS } from '../../src/game/data/items.js';
 /**
  * A scripted player for the Cinder Warden fight: what a careful first-time
  * player does after reading the telegraphs. It locks on, keeps a few metres
- * away, rolls when a wind-up is nearly done (back from a sweep, sideways from
- * a slam), raises the shield against embers, deals with cindermites first,
+ * away, rolls when a wind-up is nearly done (back from a sweep or a stomp,
+ * sideways from any slam, which only hits a narrow lane), steps out of
+ * fissure rings, raises the shield against embers, deals with cindermites first,
  * drinks a tonic when low and the Warden isn't swinging, and attacks when the
  * axe is stuck (the weak point) or a sweep has just whiffed.
  *
@@ -85,9 +86,13 @@ export async function fightWarden({ preset, tonics = 1, maxHp = 100, seconds = 2
   let windups = 0;
   /** Which way to sidestep this slam (chosen once, when it starts). */
   let side = 1;
+  /** How often it used each move (attack names, or the cast). */
+  stats.moves = /** @type {Record<string, number>} */ ({});
   sb.events.on('windup', (d) => {
     if (d.foe !== boss) return;
     windups++;
+    const move = d.attack?.name ?? d.cast;
+    stats.moves[move] = (stats.moves[move] ?? 0) + 1;
     const p = player.position;
     const e = escape();
     const perp = { x: -(boss.position.z - p.z), z: boss.position.x - p.x };
@@ -119,9 +124,18 @@ export async function fightWarden({ preset, tonics = 1, maxHp = 100, seconds = 2
     if (sb.lockTarget !== target && (boss.brain.aware || target !== boss)) sb.setLock(target);
 
     const reach = boss.attack ? boss.attack.hitbox.reach + boss.attack.hitbox.radius + 0.6 : 4;
-    if (st === 'windup' && d < reach + 1) {
+    // A fissure ring under you: step out, and roll as it bursts.
+    const ring = sb.hazards.find((h) => Math.hypot(h.position.x - p.x, h.position.z - p.z) < h.def.radius + 0.8);
+    if (ring) {
+      move = stick(p.x - ring.position.x || 1, p.z - ring.position.z);
+      const left = (ring.delay ?? ring.def.delay) - ring.age;
+      if (left <= reactFrames && rolledFor !== `h${ring.id}`) {
+        rolledFor = `h${ring.id}`;
+        pressed.roll = true;
+      }
+    } else if (st === 'windup' && d < reach + 1) {
       const e = escape();
-      if (boss.attack.name === 'Slam') {
+      if (boss.attack.hitbox.arcTo - boss.attack.hitbox.arcFrom < 40) {
         // Step out of the column: sideways, then roll as it comes down.
         move = stick(-(boss.position.z - p.z) * side, (boss.position.x - p.x) * side);
       } else {
@@ -164,6 +178,7 @@ export async function fightWarden({ preset, tonics = 1, maxHp = 100, seconds = 2
     sb.step({ move, look: { x: 0, y: 0 }, buttons: press(held, pressed) });
     trace?.({ x: player.position.x.toFixed(2), z: player.position.z.toFixed(2), frame, st, wp: boss.brain.windupProgress, d, ps: player.state, move, pressed: Object.keys(pressed), held: Object.keys(held), hp: player.hp, lock: sb.lockTarget?.id });
   }
+  stats.pillarsBroken = sb.objects.filter((o) => o.type === 'breakable' && o.open).length;
   stats.hpLeft = player.hp;
   stats.bossHpLeft = boss.hp;
   sb.dispose();

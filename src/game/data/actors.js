@@ -279,7 +279,22 @@ export const ENEMIES = {
     roarFrames: 96,
     summon: { type: 'mite', at: ['summon_a', 'summon_b', 'summon_c'] },
     windupTurn: 110,
+    /** Phase two turns faster during its wind-ups. */
+    phaseTwoTurn: 1.3,
     commitFrames: 10,
+    /** It reads where you are when it picks an attack: */
+    choice: {
+      /** behind it (more than this many degrees off its front) and this close: a stomp; */
+      behindAngle: 110,
+      stompRange: 3.6,
+      /** this far or further: sometimes (lateSlamChance), the delayed slam; */
+      lateSlamFrom: 3.0,
+      lateSlamChance: 0.35,
+      /** phase two: chance a sweep turns straight into a slam. */
+      comboChance: 0.5,
+    },
+    /** Phase two, from afar: a fissure (HAZARDS.fissure) towards you, half the time instead of the volley. */
+    fissure: { hazard: 'fissure', from: 2, step: 1.6, count: 6, stagger: 5 },
     hitstunFrames: 0,
     staggerFrames: 0,
     respawnSeconds: 0,

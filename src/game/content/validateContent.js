@@ -40,7 +40,7 @@ import { applyEffects } from '../adventure/effects.js';
  * @property {Record<string, number>} startItems
  */
 
-const OBJECT_TYPES = ['gate', 'door', 'chest', 'switch', 'pickup', 'hearthstone', 'hearth'];
+const OBJECT_TYPES = ['gate', 'door', 'chest', 'switch', 'pickup', 'hearthstone', 'hearth', 'breakable'];
 const ITEM_TYPES = ['consumable', 'upgrade', 'key'];
 
 /**
@@ -79,7 +79,7 @@ export function validateContent(c) {
   for (const [id, o] of Object.entries(c.objects)) {
     const e = err('objects.js');
     const where = `object "${id}"`;
-    unknownKeys(o, ['type', 'name', 'model', 'openModel', 'scale', 'solid', 'openIf', 'showIf', 'prompt', 'dialogue', 'hitEffects', 'checkpoint'], where, e);
+    unknownKeys(o, ['type', 'name', 'model', 'openModel', 'scale', 'openScale', 'solid', 'openIf', 'showIf', 'prompt', 'dialogue', 'hitEffects', 'checkpoint'], where, e);
     if (!OBJECT_TYPES.includes(o.type)) e(where, `type must be one of ${OBJECT_TYPES.join(', ')}`);
     for (const key of ['model', 'openModel']) if (o[key] && !c.models[o[key]]) e(where, `unknown ${key} "${o[key]}"`);
     if (o.dialogue && !c.dialogues[o.dialogue]) e(where, `unknown dialogue "${o.dialogue}"`);

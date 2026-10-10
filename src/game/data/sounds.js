@@ -76,6 +76,23 @@ export const SOUNDS = {
       tone(ctx, out, t + 0.12, { type: 'sine', from: 990, duration: 0.3, volume: 0.15 });
     },
   },
+  boss_stomp_windup: {
+    caption: '[The Warden raises a foot]',
+    volume: 0.9,
+    recipe: (ctx, out, t) => {
+      // A short, low creak that rises: different from the axe's whine.
+      tone(ctx, out, t, { type: 'sawtooth', from: 55, to: 110, duration: 0.45, volume: 0.25, attack: 0.2 });
+      noise(ctx, out, t, { duration: 0.45, filter: 'lowpass', from: 200, to: 600, volume: 0.4, attack: 0.2 });
+    },
+  },
+  pillar_break: {
+    caption: '[A pillar shatters]',
+    volume: 1,
+    recipe: (ctx, out, t, rng) => {
+      noise(ctx, out, t, { duration: 0.9, filter: 'lowpass', from: 1800, to: 120, volume: 0.8 });
+      for (let i = 0; i < 6; i++) noise(ctx, out, t + 0.1 + i * 0.08 + rng() * 0.04, { duration: 0.06, filter: 'bandpass', from: 600 + rng() * 900, volume: 0.35 });
+    },
+  },
   armored: {
     caption: '[Clang: it keeps coming]',
     volume: 0.8,
@@ -92,6 +109,14 @@ export const SOUNDS = {
       // A rising hiss: get out before it peaks.
       noise(ctx, out, t, { duration: 0.85, filter: 'bandpass', from: 400, to: 2400, volume: 0.45, attack: 0.6 });
       tone(ctx, out, t, { type: 'sine', from: 160, to: 320, duration: 0.85, volume: 0.15, attack: 0.5 });
+    },
+  },
+  fissure: {
+    caption: '[The floor cracks open towards you]',
+    volume: 0.9,
+    recipe: (ctx, out, t) => {
+      noise(ctx, out, t, { duration: 0.8, filter: 'lowpass', from: 300, to: 900, volume: 0.6, attack: 0.3 });
+      tone(ctx, out, t, { type: 'sawtooth', from: 45, to: 70, duration: 0.8, volume: 0.2, attack: 0.3 });
     },
   },
   flare_burst: {

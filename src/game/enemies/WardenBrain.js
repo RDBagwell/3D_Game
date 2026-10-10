@@ -1,4 +1,4 @@
-import { StateMachine } from '../../engine/index.js';
+import { StateMachine, angleDelta, DEG } from '../../engine/index.js';
 import { ATTACKS } from '../data/attacks.js';
 
 /**
@@ -6,18 +6,28 @@ import { ATTACKS } from '../data/attacks.js';
  * clear opening.
  *
  *   dormant ──you come close──▶ approach ──in range──▶ windup ──▶ attack ──▶ recover ──▶ approach
- *                                  │                    (sweep or slam)        │
- *                                  │                    slam ──▶ stuck (the opening) ──▶ recover
- *                                  ├──phase two, far away──▶ cast (ember volley) ──▶ recover
+ *                                  │                    (picked by where you are)   │
+ *                                  │                    a slam ──▶ stuck (the opening) ──▶ recover
+ *                                  │                    phase two: sweep ──▶ windup (a follow-up slam)
+ *                                  ├──phase two, far away──▶ cast (ember volley or fissure) ──▶ recover
  *                                  └──below half health, once──▶ roar (calls cindermites) ──▶ approach
  *
+ * It picks by where you stand (`choose`, ENEMIES.warden.choice):
+ *   Stomp  you're behind it, close: it stamps, and the floor all round it
+ *          jolts. Wind-up 28 frames, short reach, its own thud.
+ *   Delayed slam  you're a few metres off (sometimes): the slam, held
+ *          high for longer (wind-up 66) so an early roll comes too soon, and
+ *          lunging further.
  *   Sweep  a wide spin around it (most of a circle in front). Wind-up 34
- *          frames: back off or roll through it.
+ *          frames: back off or roll through it. In phase two it sometimes
+ *          turns straight into a follow-up slam (wind-up 40).
  *   Slam   an overhead chop straight ahead that knocks you down. Wind-up 48
  *          frames, the longest and most obvious. Its axe sticks in the floor
  *          for about two seconds: its glowing core is exposed and takes double
  *          damage (the weak point). Outside that, its ash armour softens hits.
- *   Volley (phase two) three embers in a fan when you keep your distance.
+ *          Every slam smashes an arena pillar it lands on: hiding works once.
+ *   Volley (phase two) three embers in a fan when you keep your distance;
+ *          or, half the time, a fissure: a line of bursting rings towards you.
  *   Charge if you keep out of reach for a few seconds it runs at you (faster
  *          than you can back away while locked on) and attacks.
  *   Roar   (phase two begins) it's invulnerable for a moment and calls three
@@ -35,7 +45,7 @@ export const WARDEN_TRANSITIONS = {
   dormant: ['approach', 'dead'],
   approach: ['windup', 'cast', 'roar', 'dead'],
   windup: ['attack', 'dead'],
-  attack: ['recover', 'stuck', 'dead'],
+  attack: ['recover', 'stuck', 'windup', 'dead'],
   stuck: ['recover', 'dead'],
   recover: ['approach', 'roar', 'dead'],
   cast: ['recover', 'dead'],
@@ -61,6 +71,8 @@ export class WardenBrain {
     this.phaseTwoPending = false;
     this.rest = 60;
     this.volleyCooldown = 120;
+    /** What the current cast is: embers, or a fissure. @type {'volley' | 'fissure'} */
+    this.casting = 'volley';
     this.lastAttacks = /** @type {string[]} */ ([]);
     /** Frames spent approaching without getting an attack in (it charges when this runs out). */
     this.waiting = 0;
@@ -154,7 +166,8 @@ export class WardenBrain {
           this.windupProgress = Math.min(1, f / this.attack.startup);
           // It steps in as it winds up, then plants its feet and commits.
           if (f >= this.attack.startup - this.def.commitFrames) this.intent = { move: 'none', speed: 0, face: null, turnRate: 0 };
-          else face(ctx().see.distance > 2.2 ? 'toward' : 'none', this.def.walkSpeed, this.def.windupTurn);
+          else if (this.attackKey === 'wardenStomp') still(); // stamping where it stands
+          else face(ctx().see.distance > 2.2 ? 'toward' : 'none', this.def.walkSpeed, this.def.windupTurn * (this.phase === 2 ? this.def.phaseTwoTurn ?? 1 : 1));
           if (f >= this.attack.startup - 1) this.fsm.go('attack');
         },
       },
@@ -163,7 +176,10 @@ export class WardenBrain {
         update: () => {
           this.frameNow = this.attack.startup + this.fsm.frames;
           still();
-          if (this.fsm.frames >= this.attack.active - 1) this.fsm.go(this.attack === ATTACKS.wardenSlam ? 'stuck' : 'recover');
+          if (this.fsm.frames < this.attack.active - 1) return;
+          // Phase two: a sweep sometimes turns straight into a slam.
+          if (this.attackKey === 'wardenSweep' && this.phase === 2 && ctx().random() < (this.def.choice?.comboChance ?? 0)) return void this.use('wardenSlamFollow');
+          this.fsm.go(this.attack.breaks ? 'stuck' : 'recover');
         },
       },
       stuck: {
@@ -186,7 +202,8 @@ export class WardenBrain {
       cast: {
         enter: () => {
           this.windupProgress = 0;
-          ctx().emit('windup', { id: this.id, cast: 'ember', boss: true });
+          this.casting = this.def.fissure && ctx().random() < 0.5 ? 'fissure' : 'volley';
+          ctx().emit('windup', { id: this.id, cast: this.casting === 'fissure' ? this.def.fissure.hazard : 'ember', boss: true });
         },
         update: () => {
           const f = this.fsm.frames / slow();
@@ -194,7 +211,8 @@ export class WardenBrain {
           if (f < 42 - this.def.commitFrames) face('none', 0, this.def.windupTurn);
           else this.intent = { move: 'none', speed: 0, face: null, turnRate: 0 };
           if (f >= 42) {
-            ctx().shoot?.('ember', ctx().facing, [-0.34, 0, 0.34]);
+            if (this.casting === 'fissure') ctx().fissure?.(this.def.fissure, ctx().facing);
+            else ctx().shoot?.('ember', ctx().facing, [-0.34, 0, 0.34]);
             this.volleyCooldown = 300;
             this.attack = ATTACKS.wardenSweep; // recover like after a sweep
             this.attackKey = 'wardenSweep';
@@ -227,12 +245,28 @@ export class WardenBrain {
     };
   }
 
-  /** @private Pick the next attack: mostly alternating, never the same three times. */
+  /**
+   * @private Pick the next attack by where you stand: a stomp if you're
+   * behind it, sometimes the delayed slam if you're a few metres off, else
+   * sweep or slam (mostly alternating, never the same three times).
+   */
   choose() {
     const ctx = /** @type {import('./GruntBrain.js').BrainContext} */ (this.ctx);
+    const c = this.def.choice ?? {};
+    const off = Math.abs(angleDelta(ctx.facing, ctx.see.bearing)) / DEG;
     let key = ctx.random() < 0.55 ? 'wardenSweep' : 'wardenSlam';
     if (this.lastAttacks.length >= 2 && this.lastAttacks.every((k) => k === key)) key = key === 'wardenSweep' ? 'wardenSlam' : 'wardenSweep';
+    if (c.behindAngle !== undefined && off > c.behindAngle && ctx.see.distance <= c.stompRange) key = 'wardenStomp';
+    else if (c.lateSlamFrom !== undefined && ctx.see.distance >= c.lateSlamFrom && ctx.random() < (c.lateSlamChance ?? 0)) key = 'wardenSlamLate';
     this.lastAttacks = [...this.lastAttacks.slice(-1), key];
+    this.use(key);
+  }
+
+  /**
+   * Wind up an attack.
+   * @param {string} key  a key of ATTACKS
+   */
+  use(key) {
     this.attack = ATTACKS[key];
     this.attackKey = key;
     this.fsm.go('windup');

@@ -41,6 +41,8 @@
  *                stops flinching: a hit after that still hurts but doesn't
  *                interrupt it, unless it breaks its poise (a charged chop, a
  *                bash, a parry). Hitting early works; trading late doesn't
+ *   breaks       true: its blow shatters breakable things it lands on (the
+ *                Warden's slams and the arena's pillars)
  *   rollCancelFrom  first frame a roll may interrupt the attack, when the lab's
  *                "attack-cancel windows" is on; otherwise only after `total`
  *   anim         the animation clip
@@ -77,6 +79,7 @@
  * @property {string} [pauseNext]
  * @property {boolean} [guardBreak]
  * @property {number} [armorFrom]
+ * @property {boolean} [breaks]
  * @property {number} chainFrom
  * @property {number} rollCancelFrom
  */
@@ -391,9 +394,78 @@ export const ATTACKS = {
     hitstop: 10,
     knockdown: true,
     windupSound: 'boss_slam_windup',
+    breaks: true,
     shake: 0.8,
     lunge: 2.2,
     hitbox: { reach: 2.3, radius: 1.05, height: 0.7, arcFrom: -6, arcTo: 6 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+  // From a few metres out: the same slam, held high a moment longer before
+  // it drops. A roll timed to the axe going up comes too early; wait for the
+  // ring to close.
+  wardenSlamLate: {
+    name: 'Delayed slam',
+    anim: '2H_Melee_Attack_Chop',
+    startup: 66,
+    active: 5,
+    recovery: 22,
+    damage: 32,
+    poise: 0,
+    knockback: 9,
+    hitstun: 30,
+    hitstop: 10,
+    knockdown: true,
+    windupSound: 'boss_slam_windup',
+    breaks: true,
+    shake: 0.8,
+    lunge: 4.5,
+    hitbox: { reach: 2.6, radius: 1.05, height: 0.7, arcFrom: -6, arcTo: 6 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+  // Phase two: a sweep that turns straight into a slam. The slam still has
+  // its own wind-up and lane, a little shorter.
+  wardenSlamFollow: {
+    name: 'Follow-up slam',
+    anim: '2H_Melee_Attack_Chop',
+    startup: 40,
+    active: 5,
+    recovery: 22,
+    damage: 28,
+    poise: 0,
+    knockback: 9,
+    hitstun: 30,
+    hitstop: 10,
+    knockdown: true,
+    windupSound: 'boss_slam_windup',
+    breaks: true,
+    shake: 0.8,
+    lunge: 2.4,
+    hitbox: { reach: 2.3, radius: 1.05, height: 0.7, arcFrom: -6, arcTo: 6 },
+    next: null,
+    chainFrom: 999,
+    rollCancelFrom: 999,
+  },
+  // You're behind it: it stamps, and the floor all round it jolts. Short
+  // reach, short wind-up, its own sound: step away or roll.
+  wardenStomp: {
+    name: 'Stomp',
+    anim: 'Jump_Full_Short',
+    startup: 28,
+    active: 5,
+    recovery: 40,
+    damage: 16,
+    poise: 0,
+    knockback: 8,
+    hitstun: 24,
+    hitstop: 7,
+    windupSound: 'boss_stomp_windup',
+    shake: 0.6,
+    lunge: 0,
+    hitbox: { reach: 0.2, radius: 2.5, height: 0.6, arcFrom: -180, arcTo: 180 },
     next: null,
     chainFrom: 999,
     rollCancelFrom: 999,
@@ -431,6 +503,8 @@ export const PROJECTILES = {
 /** @type {Record<string, HazardDef>} */
 export const HAZARDS = {
   flare: { name: 'Ash flare', radius: 1.5, delay: 54, damage: 11, knockback: 4, hitstun: 18, hitstop: 4, shake: 0.3 },
+  // The Warden's fissure (phase two): a line of these towards you, bursting one after another.
+  fissure: { name: 'Fissure', radius: 1.0, delay: 46, damage: 15, knockback: 6, hitstun: 22, hitstop: 5, shake: 0.4 },
 };
 
 /** The player's combo, in order: a fresh swing starts with the first. */

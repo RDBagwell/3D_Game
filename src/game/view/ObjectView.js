@@ -13,6 +13,7 @@ import { OBJECTS } from '../data/objects.js';
  *   switch      a floating crystal: cool blue, warm orange once struck
  *   hearthstone a standing stone whose ember glows while it's your checkpoint
  *   hearth      a cold stone bowl; a fire and a light once lit
+ *   breakable   a pillar; rubble once a slam has smashed it
  *
  * Shapes, not only colours, say what changed: a gate disappears, a lid lifts,
  * the crystal stops spinning and drops, a flame appears.
@@ -46,11 +47,11 @@ export class ObjectView {
     /** Open last frame (gates and doors sound when they open). */
     this.wasOpen = object.open;
 
-    const model = (/** @type {string | undefined} */ key) => {
+    const model = (/** @type {string | undefined} */ key, scale = def.scale ?? 1) => {
       const gltf = key ? models[key] : null;
       if (!gltf) return null;
       const m = gltf.scene.clone(true);
-      m.scale.setScalar(def.scale ?? 1);
+      m.scale.setScalar(scale);
       m.traverse((/** @type {any} */ o) => {
         o.castShadow = true;
         o.receiveShadow = true;
@@ -135,6 +136,13 @@ export class ObjectView {
         this.light = new PointLight(0xff8a3a, 0, 22, 1.4);
         this.light.position.y = 2;
         this.root.add(bowl, ash, this.flame, this.light);
+        break;
+      }
+      case 'breakable': {
+        const whole = model(def.model);
+        const rubble = model(def.openModel, def.openScale ?? def.scale);
+        if (whole) this.closed.add(whole);
+        if (rubble) this.opened.add(rubble);
         break;
       }
       default:

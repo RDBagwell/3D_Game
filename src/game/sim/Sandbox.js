@@ -117,6 +117,8 @@ export class Sandbox {
     /** Ground hazards waiting to burst (an adept's flare). @type {Hazard[]} */
     this.hazards = [];
     this.hazardCount = 0;
+    /** Hazard groups (a fissure's rings) that have already hurt the hero. @type {Set<string>} */
+    this.hazardHits = new Set();
     /** Wind-ups take this much longer, and enemies move a little slower (the "slower enemies" assist). */
     this.enemySlow = 1;
     this.feel = feel;
@@ -547,6 +549,7 @@ export class Sandbox {
         slow: this.enemySlow,
         alert: () => this.alertAllies(foe),
         flare: (kind) => this.flare(kind, foe),
+        fissure: (line, yaw) => this.fissure(line, foe, yaw),
         shoot: (projectile, yaw, spread = [0]) => {
           for (const off of spread) this.shoot(projectile, foe, yaw + off);
         },
@@ -809,18 +812,46 @@ export class Sandbox {
     this.emit('hazard', { hazard: h });
   }
 
+  /**
+   * The Warden's fissure: a line of hazards from it towards a yaw, each
+   * bursting a few frames after the last. It stops at a wall.
+   * @param {{ hazard: string, from: number, step: number, count: number, stagger: number }} line
+   * @param {Enemy} owner
+   * @param {number} yaw
+   */
+  fissure(line, owner, yaw) {
+    const def = HAZARDS[line.hazard];
+    if (!def) return;
+    const o = owner.position;
+    const dir = { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+    const reach = line.from + line.step * (line.count - 1);
+    const group = `fissure_${this.hazardCount + 1}`;
+    const wall = this.physics.rayDistance({ x: o.x, y: o.y + 0.5, z: o.z }, dir, reach + def.radius);
+    for (let i = 0; i < line.count; i++) {
+      const d = line.from + line.step * i;
+      if (wall !== null && d > wall - def.radius * 0.5) break;
+      /** @type {Hazard} */
+      const h = { id: `hazard_${++this.hazardCount}`, kind: line.hazard, def, owner, position: { x: o.x + dir.x * d, y: o.y, z: o.z + dir.z * d }, age: 0, delay: def.delay + i * line.stagger, group };
+      this.hazards.push(h);
+      this.emit('hazard', { hazard: h });
+    }
+  }
+
   /** @private Hazards count down, then burst: anyone inside is hurt (no shield helps). */
   updateHazards() {
     if (this.hazards.length === 0) return;
     const player = this.player;
     for (const h of this.hazards) {
-      if (++h.age < h.def.delay) continue;
+      if (++h.age < (h.delay ?? h.def.delay)) continue;
       h.ended = true;
       this.emit('hazardBurst', { hazard: h, point: { ...h.position } });
       const dx = player.position.x - h.position.x;
       const dz = player.position.z - h.position.z;
       const d = Math.hypot(dx, dz);
       if (!player.alive || d > h.def.radius + player.radius || Math.abs(player.position.y - h.position.y) > 1.5) continue;
+      // A fissure's rings overlap: it hurts you once, however many you stand in.
+      if (h.group && this.hazardHits.has(h.group)) continue;
+      if (h.group) this.hazardHits.add(h.group);
       const dir = d > 1e-3 ? { x: dx / d, y: 0, z: dz / d } : { x: 0, y: 0, z: 1 };
       const base = { attacker: h.owner, target: player, attack: h.def, point: { ...player.position }, direction: dir, hazard: h };
       if (player.isInvulnerable()) {
@@ -834,6 +865,7 @@ export class Sandbox {
       this.emit('hit', { ...base, damage, killed: !player.alive, counter: false });
     }
     this.hazards = this.hazards.filter((h) => !h.ended);
+    if (this.hazards.length === 0) this.hazardHits.clear();
   }
 
   // ------------------------------------------------------------------ people, objects and exits
@@ -925,6 +957,27 @@ export class Sandbox {
       const frame = foe.brain.frameNow;
       if (frame < 0) continue;
       for (const r of resolveSwing(foe, foe.attack, frame, [player], foe.swingHits)) this.applyHit(foe, foe.attack, r);
+      if (foe.attack.breaks) this.breakObjects(hitSpheresAt(foe.attack, frame, foe.position, foe.facing));
+    }
+  }
+
+  /**
+   * A blow that `breaks` (the Warden's slams) shatters breakable objects it
+   * lands on: the arena's pillars. Broken, they stop blocking; a broken
+   * pillar stays down until the area is entered again.
+   * @private
+   * @param {{ x: number, y: number, z: number, r: number }[]} spheres
+   */
+  breakObjects(spheres) {
+    if (spheres.length === 0) return;
+    for (const o of this.objects) {
+      if (o.type !== 'breakable' || o.open || o.hidden) continue;
+      const [w, h, d] = OBJECTS[o.id].solid ?? [1, 2, 1];
+      const half = Math.max(w, d) / 2;
+      const hit = spheres.find((s) => Math.hypot(s.x - o.position.x, s.z - o.position.z) <= s.r + half && s.y - s.r <= o.position.y + h);
+      if (!hit) continue;
+      this.setObject(o.id, { open: true });
+      this.emit('objectBroken', { id: o.id, point: { x: o.position.x, y: o.position.y + h / 2, z: o.position.z } });
     }
   }
 
@@ -1130,6 +1183,8 @@ export class Sandbox {
  * @property {Enemy} owner
  * @property {{ x: number, y: number, z: number }} position
  * @property {number} age  frames
+ * @property {number} [delay]  frames before it bursts, if not its def's
+ * @property {string} [group]  rings of one fissure: together they hurt once
  * @property {boolean} [ended]
  */
 

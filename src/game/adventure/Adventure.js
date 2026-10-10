@@ -178,7 +178,8 @@ export class Adventure {
     if (!sb) return;
     for (const o of sb.objects) {
       const def = OBJECTS[o.id];
-      const open = def.openIf ? evaluateCondition(def.openIf, this.ctx) : false;
+      // (A breakable's state is the fight's, not the flags': a smashed pillar stays smashed.)
+      const open = def.type === 'breakable' ? o.open : def.openIf ? evaluateCondition(def.openIf, this.ctx) : false;
       const hidden = def.showIf ? !evaluateCondition(def.showIf, this.ctx) : false;
       // Gates, doors, chests and switches can be used while closed; pickups and the Hearth while there.
       const usable = (def.dialogue || def.hitEffects) && !(open && def.type !== 'hearth') && !(def.type === 'hearth' && open);

@@ -4,10 +4,12 @@
  * check items and flags and apply effects, the same as talking to someone),
  * and their look follows conditions on the game's flags.
  *
- *   type       'gate' | 'door' | 'chest' | 'switch' | 'pickup' | 'hearthstone' | 'hearth'
+ *   type       'gate' | 'door' | 'chest' | 'switch' | 'pickup' | 'hearthstone' | 'hearth' | 'breakable'
+ *              (a breakable is smashed by a blow that `breaks`, data/attacks.js:
+ *              its model swaps to openModel, rubble, and it stops blocking)
  *   name       for the prompt ("Open the chest")
  *   model      model drawn (MODELS key); for gates, openModel replaces it once open
- *   scale      model scale
+ *   scale      model scale (openScale: the open model's, if different)
  *   solid      [w, h, d] collision box while closed (gates, doors, chests)
  *   openIf     condition: the object is open (gate up, chest open, switch lit)
  *   showIf     condition: the object is there at all (default: always)
@@ -19,10 +21,17 @@
  * Conditions and effects use the dialogue language (docs/CONTENT.md).
  */
 
-/** @typedef {{ type: string, name: string, model?: string, openModel?: string, scale?: number, solid?: [number, number, number], openIf?: Record<string, any>, showIf?: Record<string, any>, prompt?: string, dialogue?: string, hitEffects?: Record<string, any>[], checkpoint?: string }} ObjectDef */
+/** @typedef {{ type: string, name: string, model?: string, openModel?: string, scale?: number, openScale?: number, solid?: [number, number, number], openIf?: Record<string, any>, showIf?: Record<string, any>, prompt?: string, dialogue?: string, hitEffects?: Record<string, any>[], checkpoint?: string }} ObjectDef */
+
+/** One of the four pillars in the Warden's arena. */
+const ARENA_PILLAR = { type: 'breakable', name: 'a pillar', model: 'dun_pillar', openModel: 'dun_rubble', scale: 0.85, openScale: 0.3, solid: /** @type {[number, number, number]} */ ([1.8, 3.4, 1.4]) };
 
 /** @type {Record<string, ObjectDef>} */
 export const OBJECTS = {
+  arena_pillar_nw: ARENA_PILLAR,
+  arena_pillar_ne: ARENA_PILLAR,
+  arena_pillar_sw: ARENA_PILLAR,
+  arena_pillar_se: ARENA_PILLAR,
   hearth_gate: {
     type: 'gate',
     name: 'the Hearth gate',
