@@ -107,6 +107,20 @@ describe('saves', () => {
     expect(result.state?.toSaveData()).toEqual(midGame().toSaveData());
   });
 
+  it('survive the version bump: a v3 save (before smashed crates were remembered) loads in v4', () => {
+    const storage = new MemoryStorage();
+    const v3 = createSaves(storage);
+    v3.version = 3;
+    v3.migrations = {};
+    v3.validate = () => true;
+    const { looted: _v4, ...v3Data } = midGame().toSaveData();
+    expect(v3.save('slot1', { ...v3Data, settings: null }).ok).toBe(true);
+    const result = loadGame(createSaves(storage), 'slot1');
+    expect(result.migratedFrom).toBe(3);
+    expect(result.state?.looted.size).toBe(0);
+    expect(result.state?.toSaveData()).toEqual(midGame().toSaveData());
+  });
+
   it('refuse a save from a newer version, with a reason', () => {
     const storage = new MemoryStorage();
     storage.setItem('emberwake:slot1', JSON.stringify({ format: 'save', version: SAVE_VERSION + 1, data: {} }));

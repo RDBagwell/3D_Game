@@ -29,6 +29,9 @@ import { Sandbox } from '../sim/Sandbox.js';
  * fires, so changing a setting mid-fight takes effect on the next hit and can
  * never leave anything half-applied.
  */
+/** Where lanterns hang in the village once the Hearth is lit (x, z). */
+const LANTERNS = [[-7, -2.5], [7, -2.5], [-7, 10.5], [7, 10.5], [-9.5, 12], [9.5, 14], [11, -1], [-10, -1], [0, -24]];
+
 export class WorldView {
   /**
    * @param {object} o
@@ -92,6 +95,10 @@ export class WorldView {
     this.quality = QUALITY.high;
     /** The current checkpoint's hearthstone (it glows). @type {() => string | null} */
     this.checkpointObject = () => null;
+    /** The Hearth is lit: the village celebrates (lanterns, many bright wisps). @type {() => boolean} */
+    this.celebrating = () => false;
+    /** Seconds until the next ambient wisp or ember. */
+    this.ambientIn = 0;
     this.width = 1;
     this.height = 1;
     this.lookAt = new Vector3();
@@ -128,6 +135,7 @@ export class WorldView {
 
     scene.add(this.particles.object);
     scene.add(this.orbs.object);
+    if (sandbox.area.id === 'village' && this.celebrating()) this.addLanterns(scene);
     scene.add(this.gizmos.object);
     this.flares = new Map();
     this.bolts = new Map();
@@ -268,6 +276,53 @@ export class WorldView {
       this.audio.play('shells', { position: p });
       this.floaters.add(`+${amount} shells`, { x: p.x, y: p.y + 2, z: p.z }, 'note good');
     });
+  }
+
+  /**
+   * After the ending: warm lanterns round the square and by the houses.
+   * @param {Scene} scene
+   */
+  addLanterns(scene) {
+    const glow = new MeshBasicMaterial({ color: 0xffc46b });
+    for (const [x, z] of LANTERNS) {
+      const lamp = new Mesh(this.boltGeometry, glow);
+      lamp.scale.setScalar(0.22);
+      lamp.position.set(x, 2.4, z);
+      const light = new PointLight(0xffa14a, 6, 9, 1.6);
+      light.position.set(x, 2.4, z);
+      light.userData.base = 6;
+      this.torches.push(light);
+      scene.add(lamp, light);
+    }
+  }
+
+  /**
+   * The air between moments: wisps drifting over the village (faint while the
+   * Hearth is cold, many and bright once it's lit), embers rising from the
+   * Halls' torches.
+   * @param {number} dt
+   */
+  ambient(dt) {
+    if (!this.feel().particles) return;
+    this.ambientIn -= dt;
+    if (this.ambientIn > 0) return;
+    const sb = this.sandbox;
+    const p = sb.player.position;
+    if (sb.area.id === 'village') {
+      const lit = this.celebrating();
+      this.ambientIn = lit ? 0.08 : 0.6;
+      const a = Math.random() * Math.PI * 2;
+      const r = 3 + Math.random() * 14;
+      const color = /** @type {[number, number, number]} */ (lit ? [1, 0.82, 0.45] : [0.75, 0.6, 0.45]);
+      this.particles.burst({ x: p.x + Math.cos(a) * r, y: 0.6 + Math.random() * 2, z: p.z + Math.sin(a) * r }, { x: 0, y: 1, z: 0 }, 1, { color, speed: 0.6, life: lit ? 3.5 : 2.2, gravity: -0.25, spread: 0.6 });
+    } else if (sb.area.look === 'halls') {
+      // Embers from the wall torches near you.
+      this.ambientIn = 0.1;
+      const torches = (sb.area.props ?? []).filter((t) => t.model === 'dun_torch' && Math.hypot(t.at[0] - p.x, t.at[2] - p.z) < 18);
+      if (torches.length === 0) return;
+      const t = torches[Math.floor(Math.random() * torches.length)];
+      this.particles.burst({ x: t.at[0] + (Math.random() - 0.5) * 0.2, y: t.at[1] + 0.5, z: t.at[2] + (Math.random() - 0.5) * 0.2 }, { x: 0, y: 1, z: 0 }, 1, { color: [1, 0.55, 0.2], speed: 1.2, life: 1.1, gravity: -0.8, spread: 0.4 });
+    }
   }
 
   /**
@@ -508,6 +563,7 @@ export class WorldView {
       view.flashStrength = prefs.reducedMotion ? 0.45 : 1;
       view.update(alpha, sb.prev.get(view.actor.id), dt, frozen);
     }
+    this.ambient(dt);
     this.particles.update(dt);
     this.time += dt;
     for (const h of sb.hazards) {

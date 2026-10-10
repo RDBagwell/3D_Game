@@ -14,8 +14,8 @@ differences are listed at the end.
 | File | What's in it |
 | --- | --- |
 | `data/dialogues/<id>.json` | Conversations (one file each; nothing to register) |
-| `data/npcs.js` | Who the villagers are: name, model, dialogue |
-| `data/objects.js` | Gates, doors, chests, switches, pickups, hearthstones, the Hearth |
+| `data/npcs.js` | Who the villagers are: name, model, dialogue, what they say as you pass |
+| `data/objects.js` | Gates, doors, chests, switches, pickups, hearthstones, the Hearth, breakables, signs and tablets |
 | `data/flags.js` | Every story flag, with what it means |
 | `data/items.js` | Items: tonics (quick slot), upgrades, key items |
 | `data/quests.js` | The quest log |
@@ -41,6 +41,17 @@ differences are listed at the end.
 
 Walk up to them: the prompt says "Talk · Pell". They turn to face you, the
 camera frames you both, and the fight is paused while you talk.
+
+**Barks** (optional): a line they say when you pass within 5 m, shown over
+their head and as a caption, at most every 25 seconds. The first whose `if`
+holds is used:
+
+```js
+barks: [
+  { if: { flag: 'hearth_lit' }, text: 'Warm again!' },
+  { text: 'Lovely day for it.' },
+],
+```
 
 ## 2. Write a dialogue
 
@@ -188,6 +199,9 @@ area's `objects`. Types:
 | `pickup` | A thing on the ground with a glint; `showIf` decides when it's there |
 | `hearthstone` | Walking near it makes it your checkpoint (`checkpoint`: a spawn name in the area) and heals you |
 | `hearth` | The cold Hearth: usable until lit |
+| `breakable` | Smashed by a blow that `breaks` (the Warden's slams), or by your sword if `fragile`. It turns to `openModel` (rubble, at `openScale`) or vanishes, and stops blocking. `drops: { shells: n }` spills shells the first time; it then stays smashed for good |
+| `sign` | A wooden signpost; Interact (`prompt: 'Read'`) plays its `dialogue` |
+| `tablet` | A carved stone slab with a faint glow; read like a sign |
 
 `dialogue` is played when you use it (`prompt` is the verb: "Open",
 "Unlock", "Examine"). That's where a door checks for its key and a chest

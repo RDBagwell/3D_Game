@@ -1,5 +1,5 @@
 import {
-  Group, Mesh, OctahedronGeometry, CylinderGeometry, MeshStandardMaterial, PointLight, Color, SphereGeometry,
+  Group, Mesh, OctahedronGeometry, CylinderGeometry, MeshStandardMaterial, PointLight, Color, SphereGeometry, BoxGeometry,
 } from 'three';
 import { lerp } from '../../engine/index.js';
 import { OBJECTS } from '../data/objects.js';
@@ -13,11 +13,17 @@ import { OBJECTS } from '../data/objects.js';
  *   switch      a floating crystal: cool blue, warm orange once struck
  *   hearthstone a standing stone whose ember glows while it's your checkpoint
  *   hearth      a cold stone bowl; a fire and a light once lit
- *   breakable   a pillar; rubble once a slam has smashed it
+ *   breakable   a pillar (rubble once a slam smashes it), a crate or a barrel
+ *               (gone once your sword smashes it)
+ *   sign        a wooden signpost with a board
+ *   tablet      a carved stone slab
  *
  * Shapes, not only colours, say what changed: a gate disappears, a lid lifts,
  * the crystal stops spinning and drops, a flame appears.
  */
+/** Seconds a gate's bars take to rise. */
+const RISE_SECONDS = 1.1;
+
 export class ObjectView {
   /**
    * @param {import('../sim/Sandbox.js').SimObject} object
@@ -46,6 +52,9 @@ export class ObjectView {
     this.checkpoint = false;
     /** Open last frame (gates and doors sound when they open). */
     this.wasOpen = object.open;
+    /** A gate's bars, rising out of sight as it opens (seconds into the rise, or -1). */
+    this.bars = /** @type {Group | null} */ (null);
+    this.rise = -1;
 
     const model = (/** @type {string | undefined} */ key, scale = def.scale ?? 1) => {
       const gltf = key ? models[key] : null;
@@ -71,6 +80,26 @@ export class ObjectView {
           });
           this.opened.add(open);
         }
+        // Iron bars filling the archway, seen only while they rise.
+        const s = def.scale ?? 1;
+        const bars = new Group();
+        const iron = new MeshStandardMaterial({ color: 0x3a3640, roughness: 0.6, metalness: 0.6 });
+        const bar = new BoxGeometry(0.09 * s, 3.4 * s, 0.09 * s);
+        const rail = new BoxGeometry(2.6 * s, 0.1 * s, 0.1 * s);
+        for (let i = -4; i <= 4; i++) {
+          const m = new Mesh(bar, iron);
+          m.position.set(i * 0.3 * s, 1.7 * s, 0);
+          bars.add(m);
+        }
+        for (const y of [0.6, 1.7, 2.8]) {
+          const m = new Mesh(rail, iron);
+          m.position.set(0, y * s, 0);
+          bars.add(m);
+        }
+        for (const m of /** @type {Mesh[]} */ (bars.children)) m.userData.own = true;
+        bars.visible = false;
+        this.bars = bars;
+        this.root.add(bars);
         break;
       }
       case 'door': {
@@ -138,6 +167,32 @@ export class ObjectView {
         this.root.add(bowl, ash, this.flame, this.light);
         break;
       }
+      case 'sign': {
+        const wood = new MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.9 });
+        const post = new Mesh(new BoxGeometry(0.16, 2, 0.16), wood);
+        post.position.y = 1;
+        const board = new Mesh(new BoxGeometry(1.2, 0.5, 0.08), new MeshStandardMaterial({ color: 0xc9a46a, roughness: 0.85 }));
+        board.position.set(0, 1.65, 0.1);
+        for (const m of [post, board]) {
+          m.castShadow = true;
+          m.userData.own = true;
+        }
+        this.root.add(post, board);
+        break;
+      }
+      case 'tablet': {
+        const stone = new Mesh(new BoxGeometry(0.9, 1.4, 0.3), new MeshStandardMaterial({ color: 0x7d7686, roughness: 0.95 }));
+        stone.position.y = 0.7;
+        // A faint glow in the carving, so it reads as something to look at.
+        const lines = new Mesh(new BoxGeometry(0.6, 0.7, 0.02), new MeshStandardMaterial({ color: 0x2b2430, emissive: new Color(0xff8a3a), emissiveIntensity: 0.35 }));
+        lines.position.set(0, 0.8, 0.16);
+        for (const m of [stone, lines]) {
+          m.castShadow = true;
+          m.userData.own = true;
+        }
+        this.root.add(stone, lines);
+        break;
+      }
       case 'breakable': {
         const whole = model(def.model);
         const rubble = model(def.openModel, def.openScale ?? def.scale);
@@ -166,6 +221,19 @@ export class ObjectView {
     this.closed.visible = !o.open || !hasOpen;
     this.opened.visible = o.open && hasOpen;
     if (this.def.type === 'gate') this.closed.visible = !o.open;
+    // A smashed crate with no rubble model just goes.
+    if (this.def.type === 'breakable' && !hasOpen) this.closed.visible = !o.open;
+    // A gate's bars rise out of sight over about a second when it opens.
+    if (this.bars) {
+      if (this.opening) this.rise = 0;
+      if (this.rise >= 0) {
+        this.rise += dt;
+        const t = Math.min(1, this.rise / RISE_SECONDS);
+        this.bars.visible = t < 1;
+        this.bars.position.y = t * t * 3.6 * (this.def.scale ?? 1);
+        if (t >= 1) this.rise = -1;
+      }
+    }
     if (this.lid && this.def.type === 'chest') this.lid.rotation.x = lerp(this.lid.rotation.x, o.open ? -1.6 : 0, Math.min(1, dt * 6));
     if (this.lid && this.def.type === 'door') this.lid.rotation.y = lerp(this.lid.rotation.y, o.open ? -1.75 : 0, Math.min(1, dt * 3));
     if (this.crystal) {
@@ -204,7 +272,10 @@ export class ObjectView {
     }
     this.root.traverse((o) => {
       const mesh = /** @type {any} */ (o);
-      if (mesh.isMesh && mesh.userData.own) mesh.geometry.dispose();
+      if (mesh.isMesh && mesh.userData.own) {
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      }
     });
   }
 

@@ -95,7 +95,7 @@ export class Floaters {
     this.layer = document.createElement('div');
     this.layer.className = 'floaters';
     container.append(this.layer);
-    /** @type {{ el: HTMLElement, pos: Vector3, age: number, life: number, key?: string, total?: number }[]} */
+    /** @type {{ el: HTMLElement, pos: Vector3, age: number, life: number, rise?: number, key?: string, total?: number }[]} */
     this.items = [];
   }
 
@@ -129,13 +129,15 @@ export class Floaters {
    * @param {string} text
    * @param {{ x: number, y: number, z: number }} at
    * @param {string} [className]
+   * @param {{ life?: number, rise?: number }} [o]  seconds it stays; metres a second it drifts up
    */
-  add(text, at, className = '') {
+  add(text, at, className = '', { life = 0.9, rise = 1.2 } = {}) {
     const el = document.createElement('div');
     el.className = `floater ${className}`;
     el.textContent = text;
     this.layer.append(el);
-    this.items.push({ el, pos: new Vector3(at.x + (Math.random() - 0.5) * 0.3, at.y, at.z), age: 0, life: 0.9 });
+    const jitter = rise > 0 ? (Math.random() - 0.5) * 0.3 : 0;
+    this.items.push({ el, pos: new Vector3(at.x + jitter, at.y, at.z), age: 0, life, rise });
     if (this.items.length > 30) this.items.shift()?.el.remove();
   }
 
@@ -160,7 +162,7 @@ export class Floaters {
         return false;
       }
       v.copy(item.pos);
-      v.y += item.age * 1.2;
+      v.y += item.age * (item.rise ?? 1.2);
       v.project(camera);
       const visible = v.z < 1;
       item.el.style.display = visible ? '' : 'none';

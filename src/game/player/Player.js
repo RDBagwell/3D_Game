@@ -111,6 +111,8 @@ export class Player {
     this.hp = PLAYER.maxHp;
     /** Multiplies the damage of every swing (the Tempered Blade). */
     this.damageScale = 1;
+    /** Multiplies damage taken (armour upgrades: 0.8 is a fifth less). */
+    this.armor = 1;
     /** Yaw the hero faces (front = +Z rotated by yaw). */
     this.facing = yaw;
     /** Horizontal velocity, m/s. */

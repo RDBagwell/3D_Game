@@ -20,6 +20,7 @@ import { DEFAULT_BINDINGS, REBINDABLE, STORAGE } from './config.js';
  * @property {number} sfxVolume     0..10
  * @property {'auto' | 'on' | 'off'} touch
  * @property {boolean} hints  show control hints on the HUD
+ * @property {boolean} objective  show the current objective under the health bar
  * @property {'slow' | 'normal' | 'fast' | 'instant'} textSpeed  how fast dialogue types out
  * @property {'low' | 'medium' | 'high'} quality  graphics: shadows, resolution, draw distance, particles
  * @property {number} damageTaken  0.5, 0.75 or 1: how much of an enemy's damage you take (assist)
@@ -57,6 +58,7 @@ export function defaultSettings() {
     sfxVolume: 8,
     touch: 'auto',
     hints: true,
+    objective: true,
     textSpeed: 'normal',
     quality: defaultQuality(),
     damageTaken: 1,
@@ -76,7 +78,7 @@ export function sanitizeSettings(raw) {
   const s = defaultSettings();
   if (!raw || typeof raw !== 'object') return s;
   if (typeof raw.sensitivity === 'number' && raw.sensitivity >= 0.25 && raw.sensitivity <= 3) s.sensitivity = Math.round(raw.sensitivity * 20) / 20;
-  for (const key of /** @type {const} */ (['invertX', 'invertY', 'reducedMotion', 'captions', 'hints'])) {
+  for (const key of /** @type {const} */ (['invertX', 'invertY', 'reducedMotion', 'captions', 'hints', 'objective'])) {
     if (typeof raw[key] === 'boolean') s[key] = raw[key];
   }
   for (const key of /** @type {const} */ (['masterVolume', 'musicVolume', 'sfxVolume'])) {

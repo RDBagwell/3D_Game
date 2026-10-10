@@ -21,6 +21,8 @@ import { AREAS } from './data/areas/index.js';
  *       current settings).
  *   v3  + defeated: enemies beaten for good, as "area:name". v2 saves get
  *       none (everything they had beaten comes back once).
+ *   v4  + looted: crates and barrels already smashed for their shells, as
+ *       "area:id". v3 saves get none.
  *
  * Saving happens by itself at hearthstones and whenever you change area, and
  * from the pause menu (Save and quit). A damaged save is reported in its
@@ -28,7 +30,7 @@ import { AREAS } from './data/areas/index.js';
  * never stops the game from starting.
  */
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** The three save slots. */
 export const SAVE_SLOTS = ['slot1', 'slot2', 'slot3'];
@@ -42,6 +44,8 @@ export const MIGRATIONS = {
   1: (data) => ({ ...data, settings: null }),
   // v2 → v3: beaten enemies started being remembered. Older saves have none.
   2: (data) => ({ ...data, defeated: [] }),
+  // v3 → v4: smashed crates and barrels started being remembered.
+  3: (data) => ({ ...data, looted: [] }),
 };
 
 /** Settings that belong to a playthrough, restored when its slot is loaded. */
@@ -58,6 +62,7 @@ export function validateSaveData(data) {
     checkpoint: { area: 'string', spawn: 'string' },
     flags: ['string'],
     defeated: ['string'],
+    looted: ['string'],
     items: 'object',
     shells: 'integer',
     questStages: 'object',

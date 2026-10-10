@@ -1,0 +1,22 @@
+{
+  "$comment": "An optional chest in a corner of the Switch Hall.",
+  "speaker": "",
+  "start": "open",
+  "nodes": {
+    "open": {
+      "text": "An old keeper's chest, half buried in ash. Inside: a corked tonic and a pouch of shells.",
+      "effects": [
+        {
+          "setFlag": "switch_chest_opened"
+        },
+        {
+          "giveItem": "tonic"
+        },
+        {
+          "giveShells": 20
+        }
+      ],
+      "end": true
+    }
+  }
+}

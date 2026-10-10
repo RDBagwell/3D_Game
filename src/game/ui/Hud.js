@@ -8,6 +8,8 @@ import { keyLabel, keysFor } from '../settings.js';
  *     after a hit so you can see how much you lost;
  *   - the lock-on reticle: four corner brackets around the target, with its
  *     name, health, and poise (how near it is to staggering);
+ *   - the current objective (under the health bar): the main quest's stage,
+ *     or the next unfinished quest once the main one is done;
  *   - control hints (bottom) for the device you last touched: keyboard keys,
  *     or the right face-button names for an Xbox, PlayStation or Switch pad;
  *   - captions (bottom centre) for important sound cues;
@@ -49,6 +51,7 @@ export class Hud {
         <div class="health-label">Vigor</div>
         <div class="health-bar"><div class="health-ghost"></div><div class="health-fill"></div><div class="health-text"></div></div>
       </div>
+      <div class="objective" hidden><span class="objective-label">Now</span> <span class="objective-text"></span></div>
       <div class="purse" hidden><span class="purse-label">Shells</span> <b class="purse-count">0</b></div>
       <div class="preset-badge" title="Game-feel preset"></div>
       <div class="quickslot" hidden><kbd class="quickslot-key"></kbd><span class="quickslot-name">Tonic</span><b class="quickslot-count"></b></div>
@@ -73,6 +76,10 @@ export class Hud {
     this.ghost = /** @type {HTMLElement} */ (this.root.querySelector('.health-ghost'));
     this.text = /** @type {HTMLElement} */ (this.root.querySelector('.health-text'));
     this.meter = /** @type {HTMLElement} */ (this.root.querySelector('.health'));
+    this.objective = /** @type {HTMLElement} */ (this.root.querySelector('.objective'));
+    this.objectiveText = /** @type {HTMLElement} */ (this.root.querySelector('.objective-text'));
+    /** Banners waiting their turn (one shows at a time). @type {{ text: string, seconds: number }[]} */
+    this.bannerQueue = [];
     this.badge = /** @type {HTMLElement} */ (this.root.querySelector('.preset-badge'));
     this.reticle = /** @type {HTMLElement} */ (this.root.querySelector('.reticle'));
     this.reticleName = /** @type {HTMLElement} */ (this.root.querySelector('.reticle-name'));
@@ -250,9 +257,29 @@ export class Hud {
    * @param {number} [seconds=2.5]
    */
   showBanner(text, seconds = 2.5) {
+    // One at a time: a banner that arrives while another shows waits its turn
+    // (the same text twice in a row is shown once).
+    if (!this.banner.hidden && this.bannerTimer > 0) {
+      const last = this.bannerQueue[this.bannerQueue.length - 1]?.text ?? this.banner.textContent;
+      if (last !== text) this.bannerQueue.push({ text, seconds });
+      return;
+    }
     this.banner.textContent = text;
     this.banner.hidden = false;
     this.bannerTimer = seconds;
+  }
+
+  /** Clear the banner and anything queued (changing area, a menu). */
+  clearBanners() {
+    this.bannerQueue = [];
+    this.banner.hidden = true;
+    this.bannerTimer = 0;
+  }
+
+  /** @param {string | null} text  null hides it */
+  updateObjective(text) {
+    this.objective.hidden = !text;
+    if (text && this.objectiveText.textContent !== text) this.objectiveText.textContent = text;
   }
 
   /** @param {string} text */
@@ -293,7 +320,11 @@ export class Hud {
     }
     if (this.bannerTimer > 0) {
       this.bannerTimer -= dt;
-      if (this.bannerTimer <= 0) this.banner.hidden = true;
+      if (this.bannerTimer <= 0) {
+        this.banner.hidden = true;
+        const next = this.bannerQueue.shift();
+        if (next) this.showBanner(next.text, next.seconds);
+      }
     }
   }
 

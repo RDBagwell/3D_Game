@@ -40,7 +40,7 @@ import { applyEffects } from '../adventure/effects.js';
  * @property {Record<string, number>} startItems
  */
 
-const OBJECT_TYPES = ['gate', 'door', 'chest', 'switch', 'pickup', 'hearthstone', 'hearth', 'breakable'];
+const OBJECT_TYPES = ['gate', 'door', 'chest', 'switch', 'pickup', 'hearthstone', 'hearth', 'breakable', 'sign', 'tablet'];
 const ITEM_TYPES = ['consumable', 'upgrade', 'key'];
 
 /**
@@ -64,7 +64,7 @@ export function validateContent(c) {
     if (!ITEM_TYPES.includes(item.type)) e(`item "${id}"`, `type must be one of ${ITEM_TYPES.join(', ')}`);
     if (typeof item.name !== 'string' || !item.description) e(`item "${id}"`, 'needs a name and a description');
     if (item.type === 'consumable' && !(item.heal > 0)) e(`item "${id}"`, 'a consumable needs "heal"');
-    if (item.type === 'upgrade' && !(item.maxHp > 0 || item.damage > 1)) e(`item "${id}"`, 'an upgrade needs "maxHp" or "damage"');
+    if (item.type === 'upgrade' && !(item.maxHp > 0 || item.damage > 1 || (item.guard > 0 && item.guard < 1))) e(`item "${id}"`, 'an upgrade needs "maxHp", "damage" or "guard"');
   }
   for (const id of Object.keys(c.startItems)) if (!c.items[id]) err('items.js')('START_ITEMS', `unknown item "${id}"`);
 
@@ -73,13 +73,17 @@ export function validateContent(c) {
     const e = err('npcs.js');
     if (!c.models[npc.model]) e(`npc "${id}"`, `unknown model "${npc.model}" (see MODELS in assets.js)`);
     if (!c.dialogues[npc.dialogue]) e(`npc "${id}"`, `unknown dialogue "${npc.dialogue}" (no data/dialogues/${npc.dialogue}.json)`);
+    for (const [i, bark] of (npc.barks ?? []).entries()) {
+      if (typeof bark.text !== 'string' || !bark.text) e(`npc "${id}" bark ${i}`, 'needs "text"');
+      checkCondition(bark.if, `npc "${id}" bark ${i}`, known, e);
+    }
   }
 
   // Objects.
   for (const [id, o] of Object.entries(c.objects)) {
     const e = err('objects.js');
     const where = `object "${id}"`;
-    unknownKeys(o, ['type', 'name', 'model', 'openModel', 'scale', 'openScale', 'solid', 'openIf', 'showIf', 'prompt', 'dialogue', 'hitEffects', 'checkpoint'], where, e);
+    unknownKeys(o, ['type', 'name', 'model', 'openModel', 'scale', 'openScale', 'fragile', 'drops', 'solid', 'openIf', 'showIf', 'prompt', 'dialogue', 'hitEffects', 'checkpoint'], where, e);
     if (!OBJECT_TYPES.includes(o.type)) e(where, `type must be one of ${OBJECT_TYPES.join(', ')}`);
     for (const key of ['model', 'openModel']) if (o[key] && !c.models[o[key]]) e(where, `unknown ${key} "${o[key]}"`);
     if (o.dialogue && !c.dialogues[o.dialogue]) e(where, `unknown dialogue "${o.dialogue}"`);
@@ -89,6 +93,9 @@ export function validateContent(c) {
     if (o.type === 'switch' && !o.hitEffects) e(where, 'a switch needs "hitEffects"');
     if (o.type === 'hearthstone' && !o.checkpoint) e(where, 'a hearthstone needs "checkpoint" (a spawn name)');
     if (['gate', 'door', 'chest'].includes(o.type) && !o.openIf) e(where, `a ${o.type} needs "openIf"`);
+    if (['sign', 'tablet'].includes(o.type) && !o.dialogue) e(where, `a ${o.type} needs "dialogue" (what it says)`);
+    if ((o.fragile || o.drops) && o.type !== 'breakable') e(where, '"fragile" and "drops" are for breakable objects');
+    if (o.drops && !(Number.isInteger(o.drops.shells) && o.drops.shells > 0)) e(where, '"drops" must be { shells: <a whole number above 0> }');
   }
 
   // Encounters.

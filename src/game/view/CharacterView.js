@@ -29,6 +29,8 @@ const CHARGE_POSE = 0.35;
 const CRUMBLE_AFTER = 1.3;
 /** ...over this long. */
 const CRUMBLE_FADE = 0.8;
+/** Gestures a villager makes now and then. */
+const NPC_GESTURES = ['Interact', 'Use_Item', 'PickUp'];
 
 export class CharacterView {
   /**
@@ -55,6 +57,9 @@ export class CharacterView {
     this.crumbled = false;
     /** It just started to fade: the WorldView puffs ash and clears this. */
     this.crumbleBurst = false;
+    /** Villagers: seconds to the next gesture, and when the current one ends. */
+    this.gestureIn = 3 + Math.random() * 8;
+    this.gestureUntil = -1;
     /** True while materials carry flash emissive that must be cleared. */
     this.flashed = false;
     /** Softer flashes with reduced motion. */
@@ -152,6 +157,28 @@ export class CharacterView {
     this.root.visible = fade < 1;
   }
 
+  /**
+   * A villager: idle, with a small gesture now and then (and when they speak
+   * up), so they don't stand like statues.
+   * @param {number} dt
+   */
+  animateNpc(dt) {
+    this.gestureIn -= dt;
+    if (this.gestureIn <= 0 && !(/** @type {any} */ (this.actor).talking)) this.gesture();
+    if (this.gestureUntil > this.time) return;
+    this.setClip('idle', 'Idle');
+  }
+
+  /** A villager's small gesture (Interact, Use_Item or PickUp), if it has the clips. */
+  gesture() {
+    const clips = NPC_GESTURES.filter((c) => this.animator.has(c));
+    this.gestureIn = 7 + Math.random() * 9;
+    if (clips.length === 0) return;
+    const clip = clips[Math.floor(Math.random() * clips.length)];
+    this.setClip(`gesture:${this.time}`, clip, { loop: false, duration: 1.6, fade: 0.25 });
+    this.gestureUntil = this.time + 1.6;
+  }
+
   /** The shield took a blow: a short recoil (Block_Hit) before holding it up again. */
   blockFlash() {
     this.blockedAt = this.time;
@@ -185,7 +212,7 @@ export class CharacterView {
       this.animateFoe();
       if (!frozen) this.crumble(dt);
     }
-    else if (this.kind === 'npc') this.setClip('idle', 'Idle');
+    else if (this.kind === 'npc') this.animateNpc(dt);
     else this.animateDummy(dt);
 
     this.animator.defaultFade = this.crossFade;

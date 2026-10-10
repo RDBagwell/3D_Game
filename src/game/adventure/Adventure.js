@@ -160,15 +160,18 @@ export class Adventure {
     if (!player) return;
     let maxHp = PLAYER.maxHp;
     let damage = 1;
+    let armor = 1;
     for (const [id, count] of this.state.items) {
       const item = ITEMS[id];
       if (!item || item.type !== 'upgrade' || count <= 0) continue;
       maxHp += item.maxHp ?? 0;
       damage *= item.damage ?? 1;
+      armor *= item.guard ?? 1;
     }
     const gained = maxHp - player.maxHp;
     player.maxHp = maxHp;
     player.damageScale = damage;
+    player.armor = armor;
     player.hp = fill ? maxHp : Math.min(maxHp, player.hp + Math.max(0, gained));
   }
 
@@ -179,7 +182,7 @@ export class Adventure {
     for (const o of sb.objects) {
       const def = OBJECTS[o.id];
       // (A breakable's state is the fight's, not the flags': a smashed pillar stays smashed.)
-      const open = def.type === 'breakable' ? o.open : def.openIf ? evaluateCondition(def.openIf, this.ctx) : false;
+      const open = def.type === 'breakable' ? o.open || this.state.looted.has(`${sb.area.id}:${o.id}`) : def.openIf ? evaluateCondition(def.openIf, this.ctx) : false;
       const hidden = def.showIf ? !evaluateCondition(def.showIf, this.ctx) : false;
       // Gates, doors, chests and switches can be used while closed; pickups and the Hearth while there.
       const usable = (def.dialogue || def.hitEffects) && !(open && def.type !== 'hearth') && !(def.type === 'hearth' && open);
@@ -349,6 +352,21 @@ export class Adventure {
         const def = OBJECTS[e.id];
         if (def.dialogue) this.events.emit('dialogue', { id: def.dialogue, npc: null, object: e.id });
       }
+    });
+    sb.events.on('npcNear', (e) => {
+      // What they say as you pass: the first line whose condition holds.
+      const npc = NPCS[/** @type {keyof typeof NPCS} */ (e.id)];
+      const bark = npc?.barks?.find((b) => !b.if || evaluateCondition(b.if, this.ctx));
+      if (bark) this.events.emit('bark', { id: e.id, name: npc.name, text: bark.text, position: e.position });
+    });
+    sb.events.on('objectBroken', (e) => {
+      // A crate or barrel's shells, the first time it's smashed; it stays smashed.
+      const def = OBJECTS[e.id];
+      const key = `${sb.area.id}:${e.id}`;
+      if (!def.drops || this.state.looted.has(key)) return;
+      this.state.looted.add(key);
+      this.state.shells += def.drops.shells;
+      this.events.emit('shells', { amount: def.drops.shells, position: { ...e.point } });
     });
     sb.events.on('objectHit', (e) => {
       const def = OBJECTS[e.id];

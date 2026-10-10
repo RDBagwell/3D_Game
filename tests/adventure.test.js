@@ -280,3 +280,84 @@ describe('the adventure', () => {
     adv.dispose();
   });
 });
+
+describe('a world worth exploring', () => {
+  it('a crate spills its shells once, and stays smashed when you come back', async () => {
+    const adv = new Adventure(GameState.newGame());
+    await adv.enter('village', 'start');
+    const sb = adv.sandbox;
+    const crate = find(sb.objects, 'crate_square');
+    const before = adv.state.shells;
+    let spilled = 0;
+    adv.events.on('shells', (e) => (spilled += e.amount));
+    // Swing at it from beside it.
+    sb.player.body.teleport({ x: crate.position.x, y: 0.1, z: crate.position.z + 1.3 });
+    sb.player.facing = Math.PI;
+    for (let i = 0; i < 3; i++) sb.step(idle);
+    adv.step({ ...idle, buttons: { attack: { down: true, pressed: true, released: false } } }, 1 / 60);
+    for (let i = 0; i < 40; i++) adv.step(idle, 1 / 60);
+    expect(crate.open).toBe(true);
+    expect(adv.state.shells).toBe(before + 2);
+    expect(spilled).toBe(2);
+    // Leave and come back: still smashed, nothing more to find.
+    await adv.enter('halls', 'start');
+    await adv.enter('village', 'gate');
+    expect(find(adv.sandbox.objects, 'crate_square').open).toBe(true);
+    expect(adv.state.looted.has('village:crate_square')).toBe(true);
+    adv.dispose();
+  });
+
+  it("the optional chests hold supplies; the Ember Plate softens every blow", async () => {
+    const state = GameState.newGame();
+    state.flags.add('gate_open');
+    const adv = new Adventure(state);
+    await adv.enter('halls', 'start');
+    const event = await use(adv, find(adv.sandbox.objects, 'switch_chest'));
+    expect(event?.id).toBe('switch_chest');
+    const tonics = adv.state.itemCount('tonic');
+    converse(adv, event);
+    expect(adv.state.flags.has('switch_chest_opened')).toBe(true);
+    expect(adv.state.itemCount('tonic')).toBe(tonics + 1);
+
+    const sb = adv.sandbox;
+    const grunt = sb.spawnFoe('grunt', 'test', { x: 0, y: 0, z: -2 }, 0);
+    const hit = () => {
+      const hp = sb.player.hp;
+      sb.applyHit(grunt, ATTACKS.gruntChop, { target: sb.player, result: 'hit', point: { ...sb.player.position } });
+      sb.hitstop = 0;
+      return hp - sb.player.hp;
+    };
+    const bare = hit();
+    adv.state.addItem('ember_plate', 1);
+    adv.applyUpgrades();
+    sb.player.hp = sb.player.maxHp;
+    const plated = hit();
+    expect(plated).toBe(Math.round(ATTACKS.gruntChop.damage * 0.8));
+    expect(plated).toBeLessThan(bare);
+    adv.dispose();
+  });
+
+  it('villagers speak up as you pass, with a line that fits the story so far', async () => {
+    const adv = new Adventure(GameState.newGame());
+    await adv.enter('village', 'gate');
+    const sb = adv.sandbox;
+    const barks = [];
+    adv.events.on('bark', (e) => barks.push(e));
+    const ina = find(sb.npcs, 'ina');
+    sb.player.body.teleport({ x: ina.position.x, y: 0.1, z: ina.position.z + 12 });
+    for (let i = 0; i < 3; i++) adv.step(idle, 1 / 60);
+    expect(barks).toHaveLength(0);
+    sb.player.body.teleport({ x: ina.position.x, y: 0.1, z: ina.position.z + 4 });
+    for (let i = 0; i < 3; i++) adv.step(idle, 1 / 60);
+    expect(barks.map((b) => b.id)).toEqual(['ina']);
+    expect(barks[0].text).toMatch(/with the crate/);
+    // Not again straight away.
+    sb.player.body.teleport({ x: ina.position.x, y: 0.1, z: ina.position.z + 12 });
+    for (let i = 0; i < 3; i++) adv.step(idle, 1 / 60);
+    sb.player.body.teleport({ x: ina.position.x, y: 0.1, z: ina.position.z + 4 });
+    for (let i = 0; i < 3; i++) adv.step(idle, 1 / 60);
+    expect(barks).toHaveLength(1);
+    adv.dispose();
+  });
+});
+

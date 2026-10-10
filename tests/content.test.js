@@ -59,6 +59,15 @@ describe('content', () => {
     expect(unreachable.join('\n')).toMatch(/quest "impossible" .* can't be completed/);
   });
 
+  it('catches a sign with nothing to say, drops on a gate, and a bark with an unknown flag', () => {
+    const objects = { ...content.objects, mute: { type: 'sign', name: 'a sign' }, odd: { type: 'gate', name: 'a gate', openIf: { flag: 'gate_open' }, drops: { shells: 2 } } };
+    const npcs = { ...NPCS, ina: { ...NPCS.ina, barks: [{ if: { flag: 'no_such_flag' }, text: 'Hm.' }] } };
+    const errors = validateContent({ ...content, objects, npcs }).join('\n');
+    expect(errors).toMatch(/object "mute": a sign needs "dialogue"/);
+    expect(errors).toMatch(/object "odd": "fragile" and "drops" are for breakable objects/);
+    expect(errors).toMatch(/unknown flag "no_such_flag"/);
+  });
+
   it('catches an NPC placed in an area that does not exist in data', () => {
     const areas = { ...AREAS, village: { ...AREAS.village, npcs: [...(AREAS.village.npcs ?? []), { id: 'nobody', at: /** @type {[number, number, number]} */ ([0, 0, 0]) }] } };
     expect(validateContent({ ...content, areas }).join('\n')).toMatch(/npc "nobody": no such NPC/);

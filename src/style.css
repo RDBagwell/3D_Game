@@ -64,6 +64,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .reticle-hp div { height: 100%; background: var(--orange); }
 .reticle-poise { position: absolute; left: -30px; width: 60px; top: 45px; height: 3px; border-radius: 2px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
 .reticle-poise div { height: 100%; background: #cfe3ff; }
+.objective { position: absolute; left: 20px; top: 100px; max-width: min(420px, 60vw); padding: 5px 10px; border-radius: var(--radius); background: rgba(20, 14, 34, 0.55); font-size: 13px; line-height: 1.35; text-shadow: 0 1px 2px #000; }
+.objective-label { color: var(--orange); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; margin-right: 4px; }
 .banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); padding: 10px 22px; border-radius: var(--radius); background: rgba(43, 29, 74, 0.85); border: 2px solid var(--orange); font-size: 18px; font-weight: 600; text-align: center; max-width: 90vw; }
 .captions { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); display: grid; gap: 4px; justify-items: center; }
 .caption { padding: 3px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.72); font-size: 16px; }
@@ -168,6 +170,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   body.lab-open #game { right: 0; bottom: 52vh; }
   .lab { top: auto; height: 52vh; width: 100vw; border-left: 0; border-top: 2px solid var(--ink-3); }
   .health { left: 12px; top: 12px; }
+  .objective { left: 12px; top: 92px; font-size: 12px; }
   .preset-badge { top: 12px; right: 12px; font-size: 12px; }
   .hints { display: none; }
   .perf-hud { top: 64px; left: 12px; }
@@ -285,3 +288,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .boss { top: 10px; left: 60%; width: 34vw; }
   .boss-name { font-size: 12px; }
 }
+
+/* A villager speaking up as you pass. */
+.floater.bark { font: 600 14px/1.3 system-ui, sans-serif; color: #fff; background: rgba(43, 29, 74, 0.82); border: 1px solid var(--orange-2); border-radius: 10px; padding: 4px 10px; max-width: 240px; white-space: normal; text-align: center; text-shadow: none; }

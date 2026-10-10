@@ -11,6 +11,8 @@ export const FLAGS = {
   gate_open: 'Ina opened the Hearth gate (the main quest has begun).',
   hall_gate_open: 'The crystal switch in the Switch Hall was struck: its portcullis is up.',
   vault_chest_opened: 'The chest in the Key Vault was opened (it held the Hearth Key).',
+  switch_chest_opened: 'The optional chest in the Switch Hall was opened.',
+  ante_chest_opened: 'The optional chest in the antechamber was opened.',
   vault_door_open: 'The Hearth Key opened the door out of the Key Vault.',
   warden_defeated: 'The Cinder Warden was beaten (set by its defeat).',
   hearth_lit: 'The Hearth Ember was set in the Hearth: the ending has played.',
